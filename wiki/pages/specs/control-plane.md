@@ -1,0 +1,132 @@
+---
+created: 2026-10-17
+type: spec
+status: proposed
+summary: Project/run/task control-plane model with explicit user-triggered ingestion.
+---
+
+# Control Plane — Projects, Runs, Tasks
+
+The first implementation slice is the control plane: users explicitly choose lecture
+files from the NAS, save them as a named project, and start processing. There is no
+NAS scanner, watcher, or automatic discovery. No video bytes pass through the API or
+the queue.
+
+Related: [project overview](../project-overview.md),
+[original idea](../../raw/01-app-idea.md), [decisions](../../decisions.md).
+
+## Hierarchy
+
+```text
+Project ("Lectures set 1")     saved list, defaults, results
+  └─ ProjectItem               one explicitly selected NAS file
+Run                            one explicit Start action
+  └─ Task                      one video → one queue message → one Job
+       └─ Artifact             VTT / JSON / TXT / metadata on NAS
+```
+
+- **Project** is the durable user-facing container: name, default processing
+  properties, list of lectures, and resulting transcriptions.
+- **ProjectItem** references one video asset version and may override project
+  defaults, for example the language.
+- **Run** is one execution of the project. Starting again creates a new run, so old
+  settings and outputs remain intact.
+- **Task** is one lecture, one RabbitMQ message, and one Kubernetes Job.
+- **Artifact** is a transcript file on the NAS; PostgreSQL indexes its path and
+  metadata.
+
+## Decisions
+
+- Projects, runs, tasks, and artifacts are separate entities (D-02).
+- Ingestion is explicit and user-triggered; no NAS scanner or auto-discovery (D-03).
+- One lecture file equals one video asset, one task, one queue message, and one Job;
+  a project list is never sent as one queue message (D-04).
+- Video submission is metadata-only: the API accepts a NAS-relative path and never
+  uploads media bytes (D-05).
+- Each Start creates a run snapshot; re-runs create new runs (D-06).
+- Transcript files live on the NAS; PostgreSQL stores artifact paths and status (D-07).
+
+## Data model
+
+| Table | Purpose | Key fields |
+|---|---|---|
+| `videos` | global source-file versions | `path`, `size_bytes`, `mtime` |
+| `projects` | named lecture lists and defaults | `name`, `status`, `defaults` |
+| `project_items` | selected lectures | `project_id`, `video_id`, `position`, `spec_overrides` |
+| `runs` | explicit executions of a project | `project_id`, `status`, `spec` |
+| `tasks` | one lecture per worker Job | `run_id`, `project_item_id`, `status`, `spec`, `attempts` |
+| `artifacts` | transcript outputs | `task_id`, `format`, `path` |
+
+Key constraints:
+
+- `videos (path, size_bytes, mtime)` is unique; a changed file is a new version.
+- `project_items (project_id, video_id)` is unique.
+- `tasks (run_id, project_item_id)` is unique.
+- At most one active run per project.
+- Tasks record `enqueued_at`, so the control plane can republish tasks whose message
+  publish was not confirmed.
+
+## API sketch
+
+```text
+POST   /api/v1/projects                 create a named draft project
+GET    /api/v1/projects
+GET    /api/v1/projects/{id}
+PATCH  /api/v1/projects/{id}            edit name/defaults while draft
+
+POST   /api/v1/projects/{id}/items      add explicit NAS-relative paths
+GET    /api/v1/projects/{id}/items
+DELETE /api/v1/projects/{id}/items/{item_id}
+
+POST   /api/v1/projects/{id}/start      create a run and enqueue its tasks
+GET    /api/v1/projects/{id}/runs
+GET    /api/v1/runs/{id}
+GET    /api/v1/tasks/{id}
+GET    /api/v1/tasks/{id}/files/{format}
+```
+
+There is deliberately no scan endpoint, no filesystem watcher, and no upload endpoint.
+Adding an item accepts a path such as `2026/spring/lecture-01.mp4`, not a file body.
+
+## Start semantics
+
+1. Refuse to start if the project already has an active run.
+2. Snapshot project defaults and item overrides into the new run.
+3. Preflight each item: the source file still exists and matches the stored video
+   version (`size_bytes`, `mtime`).
+4. Create one task per included item and publish one queue message per task.
+5. Lock the item list while the run is active.
+6. As tasks finish, derive run and project status.
+
+A queue message contains only the task identity, for example:
+
+```json
+{"v": 1, "task_id": "…", "run_id": "…"}
+```
+
+The worker loads the effective spec from PostgreSQL. The project list is never
+published as a single message.
+
+## Results
+
+- Transcript bytes stay on the NAS, for example
+  `<output_root>/<project_id>/<item_id>/<run_id>/transcript.vtt`.
+- The task inserts `artifacts` rows in the same transaction that marks it succeeded.
+- The project view aggregates the latest run: item status, language, duration, and
+  links to the artifacts.
+
+## Non-goals for this slice
+
+- NAS scanning, filesystem watchers, automatic discovery, or automatic starts.
+- Video uploads through the API.
+- Chunking a lecture into segments or assembling partial transcripts.
+- Faster Whisper integration; this slice uses a fake worker.
+- KEDA, UI, authentication, and multi-user authorization.
+
+## Open questions
+
+- Is a project a one-shot snapshot after the first start, or a living list that can be
+  extended and restarted for only new or failed items?
+- Per-item overrides: language per item (proposed yes) and model shared per project?
+- May the same video belong to multiple projects, each with its own transcript output?
+- Naming: keep `Project` in the API and database, or use `Collection`/`Set`?

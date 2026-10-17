@@ -1,0 +1,7 @@
+{
+  "name": "transcributed",
+  "private": true,
+  "scripts": {
+    "wiki": "node scripts/wiki.mjs"
+  }
+}
