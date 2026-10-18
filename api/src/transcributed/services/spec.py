@@ -100,8 +100,6 @@ def build_effective_spec(
         "kind": "transcribe",
         "language": language,
         "model": model,
-        "compute_type": "int8",
-        "vad_filter": True,
         "output_formats": list(dict.fromkeys(output_formats)),
         "max_attempts": max_attempts,
     }

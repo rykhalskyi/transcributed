@@ -8,3 +8,6 @@
 
 ## Specs
 - [specs/control-plane](pages/specs/control-plane.md) — Project/run/task control-plane model with explicit user-triggered ingestion.
+
+## Plans
+- [plans/worker-slice](pages/plans/worker-slice.md) — Phased plan for the real Faster Whisper worker, container image, Kubernetes Jobs/KEDA, and end-to-end verification.

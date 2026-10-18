@@ -10,7 +10,7 @@ def configure_logging(level: str) -> None:
             structlog.contextvars.merge_contextvars,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.JSONRenderer(),
+            structlog.processors.JSONRenderer(ensure_ascii=False),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
             getattr(logging, level.upper(), logging.INFO)

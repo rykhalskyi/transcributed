@@ -23,6 +23,12 @@ dependencies = [
 transcributed = "transcributed:main"
 transcributed-worker = "transcributed.worker.main:main"
 
+[project.optional-dependencies]
+worker = [
+    "faster-whisper>=1.2.1",
+    "numpy>=2.0",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
@@ -31,6 +37,7 @@ build-backend = "uv_build"
 dev = [
     "httpx>=0.28.1",
     "mypy>=2.4.0",
+    "numpy>=2.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.17.1",
@@ -58,6 +65,10 @@ disallow_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["faster_whisper", "faster_whisper.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

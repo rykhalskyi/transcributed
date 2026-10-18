@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -27,6 +28,16 @@ class Settings(BaseSettings):
     rabbitmq_connect_timeout_seconds: float = 5.0
 
     nas_input_root: Path = Path("/nas/lectures")
+
+    worker_backend: Literal["fake", "faster-whisper"] = "faster-whisper"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
+    whisper_model: str | None = None
+    whisper_model_dir: Path | None = None
+    whisper_local_files_only: bool = False
+    whisper_beam_size: int = 5
+    whisper_vad_filter: bool = True
+    ffmpeg_binary: str = "ffmpeg"
 
     allowed_extensions: tuple[str, ...] = (
         ".mp4",

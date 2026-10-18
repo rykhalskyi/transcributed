@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from transcributed.db import SessionLocal
 from transcributed.worker.main import process_task
+from transcributed.worker.transcriber import FakeTranscriber
 
 
 def test_project_add_start_and_process(
@@ -39,7 +40,7 @@ def test_project_add_start_and_process(
 
     async def run_worker() -> None:
         async with SessionLocal() as session:
-            await process_task(session, UUID(task_id))
+            await process_task(session, UUID(task_id), transcriber=FakeTranscriber())
 
     asyncio.run(run_worker())
 
@@ -84,7 +85,7 @@ def test_only_requested_formats_are_written(
 
     async def run_worker() -> None:
         async with SessionLocal() as session:
-            await process_task(session, UUID(task_id))
+            await process_task(session, UUID(task_id), transcriber=FakeTranscriber())
 
     asyncio.run(run_worker())
 

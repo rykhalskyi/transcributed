@@ -20,6 +20,15 @@ async def get_task(
     return TaskRead.model_validate(task)
 
 
+@router.post("/{task_id}/cancel", response_model=TaskRead)
+async def cancel_task(
+    task_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> TaskRead:
+    task = await run_service.cancel_task(session, task_id)
+    return TaskRead.model_validate(task)
+
+
 @router.get("/{task_id}/files/{file_format}")
 async def download_file(
     task_id: UUID,

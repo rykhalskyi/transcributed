@@ -35,6 +35,7 @@ async def refresh_run_status(session: AsyncSession, run_id: UUID) -> Run | None:
     processing = counts.get(TaskStatus.PROCESSING, 0)
     succeeded = counts.get(TaskStatus.SUCCEEDED, 0)
     failed = counts.get(TaskStatus.FAILED, 0)
+    cancelled = counts.get(TaskStatus.CANCELLED, 0)
     now = datetime.now(UTC)
 
     if queued or processing:
@@ -44,10 +45,12 @@ async def refresh_run_status(session: AsyncSession, run_id: UUID) -> Run | None:
         run.finished_at = None
     else:
         run.finished_at = now
-        if failed == 0 and succeeded == total:
+        if failed == 0 and cancelled == 0 and succeeded == total:
             run.status = RunStatus.COMPLETED
-        elif succeeded == 0 and failed == total:
+        elif succeeded == 0 and cancelled == 0 and failed == total:
             run.status = RunStatus.FAILED
+        elif succeeded == 0 and failed == 0 and cancelled == total:
+            run.status = RunStatus.CANCELLED
         else:
             run.status = RunStatus.PARTIALLY_FAILED
 
@@ -57,6 +60,8 @@ async def refresh_run_status(session: AsyncSession, run_id: UUID) -> Run | None:
             project.status = ProjectStatus.COMPLETED
         elif run.status == RunStatus.FAILED:
             project.status = ProjectStatus.FAILED
+        elif run.status == RunStatus.CANCELLED:
+            project.status = ProjectStatus.CANCELLED
         elif run.status == RunStatus.PARTIALLY_FAILED:
             project.status = ProjectStatus.PARTIALLY_FAILED
         elif run.status in (RunStatus.QUEUED, RunStatus.RUNNING):

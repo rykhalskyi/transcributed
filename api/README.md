@@ -13,7 +13,7 @@ FastAPI control plane and worker for the Transcributed lecture transcription sys
 ```bash
 cd api
 cp .env.example .env
-uv sync
+uv sync --extra worker
 
 # Starts PostgreSQL and RabbitMQ
 docker compose -f ../docker-compose.dev.yml up -d
@@ -33,6 +33,16 @@ Run one worker iteration (one message, or exit when the queue is empty):
 ```bash
 uv run transcributed-worker
 ```
+
+The real backend needs the `worker` extra. Without it, set `WORKER_BACKEND=fake`
+in `.env` and a plain `uv sync` is enough for local API/control-plane work.
+
+## Worker image model
+
+The worker image bakes exactly one Faster Whisper model, chosen with the
+`WHISPER_MODEL` build arg (default `small`). A task that requests a different model
+fails permanently instead of retrying, so build the image with the model you intend
+to use.
 
 ## Tests
 
@@ -59,3 +69,7 @@ uv run mypy src tests
 - Failed tasks are retried through `transcription.retry.1m` and
   `transcription.retry.10m` up to `max_attempts`; terminal failures are routed to
   the `transcription.dead` queue.
+- Cancel a task with `POST /api/v1/tasks/{id}/cancel` or a whole run with
+  `POST /api/v1/runs/{id}/cancel`. Cancelling marks non-terminal tasks `cancelled`,
+  discards any in-progress output, and unlocks the project for a new run. Workers
+  check the task status about every 30 seconds of audio and stop cooperatively.

@@ -89,7 +89,9 @@ DELETE /api/v1/projects/{id}/items/{item_id}
 POST   /api/v1/projects/{id}/start      create a run and enqueue its tasks
 GET    /api/v1/projects/{id}/runs
 GET    /api/v1/runs/{id}
+POST   /api/v1/runs/{id}/cancel         cancel every non-terminal task in a run
 GET    /api/v1/tasks/{id}
+POST   /api/v1/tasks/{id}/cancel        cancel one task
 GET    /api/v1/tasks/{id}/files/{format}
 ```
 
@@ -127,6 +129,21 @@ A queue message contains only the task identity, for example:
 
 The worker loads the effective spec from PostgreSQL. The project list is never
 published as a single message.
+
+## Cancellation
+
+- `cancelled` is a terminal status for tasks, runs, and projects.
+- `POST /tasks/{id}/cancel` marks a queued or processing task cancelled. Cancelling
+  an already terminal task returns `409`.
+- `POST /runs/{id}/cancel` marks every queued or processing task in the run cancelled.
+  Cancelling a terminal run returns `409`.
+- A cancelled task unlocks the project as soon as no queued or running run remains, so
+  the user can edit and start again.
+- Workers check the task status about every 30 seconds of decoded audio. On
+  cancellation they stop, discard partial output, and acknowledge the message; the
+  task is not retried and does not go to the dead-letter queue.
+- A run whose tasks are all cancelled becomes `cancelled`; mixed outcomes remain
+  `partially_failed`.
 
 ## NAS access
 

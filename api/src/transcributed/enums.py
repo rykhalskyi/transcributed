@@ -7,6 +7,7 @@ class ProjectStatus(StrEnum):
     COMPLETED = "completed"
     PARTIALLY_FAILED = "partially_failed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class RunStatus(StrEnum):
@@ -15,6 +16,7 @@ class RunStatus(StrEnum):
     COMPLETED = "completed"
     PARTIALLY_FAILED = "partially_failed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class TaskStatus(StrEnum):
@@ -22,3 +24,4 @@ class TaskStatus(StrEnum):
     PROCESSING = "processing"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
