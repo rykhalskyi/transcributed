@@ -1,0 +1,87 @@
+{{- if .Values.worker.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: {{ include "transcributed.fullname" . }}-worker
+  labels:
+    {{- include "transcributed.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: {{ .Values.worker.keda.backoffLimit }}
+    activeDeadlineSeconds: {{ .Values.worker.keda.activeDeadlineSeconds }}
+    ttlSecondsAfterFinished: {{ .Values.worker.keda.ttlSecondsAfterFinished }}
+    template:
+      metadata:
+        labels:
+          {{- include "transcributed.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: worker
+      spec:
+        restartPolicy: {{ .Values.worker.keda.restartPolicy }}
+        terminationGracePeriodSeconds: {{ .Values.worker.keda.terminationGracePeriodSeconds }}
+        serviceAccountName: {{ include "transcributed.serviceAccountName" . }}
+        {{- with .Values.imagePullSecrets }}
+        imagePullSecrets:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.worker.podSecurityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        containers:
+          - name: worker
+            image: "{{ include "transcributed.workerImage" . }}"
+            imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+            {{- include "transcributed.envFrom" . | nindent 12 }}
+            {{- if .Values.nas.enabled }}
+            volumeMounts:
+              - name: nas
+                mountPath: {{ .Values.nas.mountPath }}
+                readOnly: true
+            {{- end }}
+            {{- with .Values.worker.resources }}
+            resources:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            {{- with .Values.worker.securityContext }}
+            securityContext:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+        {{- if .Values.nas.enabled }}
+        volumes:
+          - name: nas
+            persistentVolumeClaim:
+              claimName: {{ include "transcributed.nasClaimName" . }}
+              readOnly: true
+        {{- end }}
+        {{- with .Values.worker.nodeSelector }}
+        nodeSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.worker.tolerations }}
+        tolerations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.worker.affinity }}
+        affinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+  pollingInterval: {{ .Values.worker.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.worker.keda.cooldownPeriod }}
+  successfulJobsHistoryLimit: {{ .Values.worker.keda.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.worker.keda.failedJobsHistoryLimit }}
+  maxReplicaCount: {{ .Values.worker.keda.maxReplicaCount }}
+  scalingStrategy:
+    strategy: default
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: {{ .Values.config.rabbitmqJobsQueue | quote }}
+        mode: QueueLength
+        value: {{ .Values.worker.keda.queueLength | quote }}
+      authenticationRef:
+        name: {{ include "transcributed.fullname" . }}-rabbitmq
+{{- end }}

@@ -1,0 +1,35 @@
+{{- if and .Values.nas.enabled .Values.nas.create }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "transcributed.fullname" . }}-nas
+  labels:
+    {{- include "transcributed.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .Values.nas.capacity }}
+  accessModes:
+    - {{ .Values.nas.accessMode }}
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ .Values.nas.storageClassName | quote }}
+  mountOptions:
+    {{- toYaml .Values.nas.mountOptions | nindent 4 }}
+  nfs:
+    server: {{ required "nas.server is required when nas.create=true" .Values.nas.server | quote }}
+    path: {{ required "nas.share is required when nas.create=true" .Values.nas.share | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "transcributed.nasClaimName" . }}
+  labels:
+    {{- include "transcributed.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.nas.accessMode }}
+  storageClassName: {{ .Values.nas.storageClassName | quote }}
+  volumeName: {{ include "transcributed.fullname" . }}-nas
+  resources:
+    requests:
+      storage: {{ .Values.nas.capacity }}
+{{- end }}

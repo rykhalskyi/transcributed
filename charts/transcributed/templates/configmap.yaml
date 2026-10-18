@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "transcributed.fullname" . }}
+  labels:
+    {{- include "transcributed.labels" . | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  NAS_INPUT_ROOT: {{ .Values.nas.mountPath | quote }}
+  WORKER_BACKEND: {{ .Values.config.workerBackend | quote }}
+  WHISPER_DEVICE: {{ .Values.config.whisperDevice | quote }}
+  WHISPER_COMPUTE_TYPE: {{ .Values.config.whisperComputeType | quote }}
+  WHISPER_MODEL: {{ .Values.config.whisperModel | quote }}
+  WHISPER_LOCAL_FILES_ONLY: {{ .Values.config.whisperLocalFilesOnly | quote }}
+  WHISPER_BEAM_SIZE: {{ .Values.config.whisperBeamSize | quote }}
+  WHISPER_VAD_FILTER: {{ .Values.config.whisperVadFilter | quote }}
+  FFMPEG_BINARY: {{ .Values.config.ffmpegBinary | quote }}
+  RABBITMQ_ENABLED: {{ .Values.config.rabbitmqEnabled | quote }}
+  RABBITMQ_EXCHANGE: {{ .Values.config.rabbitmqExchange | quote }}
+  RABBITMQ_JOBS_QUEUE: {{ .Values.config.rabbitmqJobsQueue | quote }}
+  RABBITMQ_CONNECT_TIMEOUT_SECONDS: {{ .Values.config.rabbitmqConnectTimeoutSeconds | quote }}
