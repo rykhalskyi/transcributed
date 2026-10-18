@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from transcributed.config import get_settings
-from transcributed.enums import ProjectStatus, RunStatus
+from transcributed.enums import ProjectStatus, RunStatus, TaskStatus
 from transcributed.errors import (
     ConflictError,
     NotFoundError,
@@ -26,6 +26,7 @@ from transcributed.services.spec import (
     source_matches,
     spec_hash,
 )
+from transcributed.services.status import refresh_run_status
 
 settings = get_settings()
 log = structlog.get_logger(__name__)
@@ -225,3 +226,64 @@ async def get_task(session: AsyncSession, task_id: UUID) -> Task:
     if task is None:
         raise NotFoundError("Task not found")
     return task
+
+
+TERMINAL_TASK_STATUSES = (
+    TaskStatus.SUCCEEDED,
+    TaskStatus.FAILED,
+    TaskStatus.CANCELLED,
+)
+TERMINAL_RUN_STATUSES = (
+    RunStatus.COMPLETED,
+    RunStatus.PARTIALLY_FAILED,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+)
+
+
+async def cancel_task(session: AsyncSession, task_id: UUID) -> Task:
+    task = await session.scalar(
+        select(Task).where(Task.id == task_id).with_for_update()
+    )
+    if task is None:
+        raise NotFoundError("Task not found")
+    if task.status in TERMINAL_TASK_STATUSES:
+        raise ConflictError("Task is already finished")
+
+    task.status = TaskStatus.CANCELLED
+    task.error = "cancelled by user"
+    task.finished_at = datetime.now(UTC)
+    await session.flush()
+    await refresh_run_status(session, task.run_id)
+    await session.commit()
+    return await get_task(session, task_id)
+
+
+async def cancel_run(session: AsyncSession, run_id: UUID) -> Run:
+    run = await session.get(Run, run_id)
+    if run is None:
+        raise NotFoundError("Run not found")
+    if run.status in TERMINAL_RUN_STATUSES:
+        raise ConflictError("Run is already finished")
+
+    tasks = (
+        await session.scalars(
+            select(Task)
+            .where(
+                Task.run_id == run_id,
+                Task.status.in_([TaskStatus.QUEUED, TaskStatus.PROCESSING]),
+            )
+            .with_for_update()
+        )
+    ).all()
+
+    now = datetime.now(UTC)
+    for task in tasks:
+        task.status = TaskStatus.CANCELLED
+        task.error = "cancelled by user"
+        task.finished_at = now
+
+    await session.flush()
+    await refresh_run_status(session, run_id)
+    await session.commit()
+    return await get_run(session, run_id)

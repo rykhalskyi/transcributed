@@ -17,3 +17,12 @@ async def get_run(
 ) -> RunDetail:
     run = await run_service.get_run(session, run_id)
     return RunDetail.model_validate(run)
+
+
+@router.post("/{run_id}/cancel", response_model=RunDetail)
+async def cancel_run(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> RunDetail:
+    run = await run_service.cancel_run(session, run_id)
+    return RunDetail.model_validate(run)

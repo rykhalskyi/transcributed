@@ -222,3 +222,6 @@ __marimo__/
 api/samples/*
 !api/samples/.gitkeep
 api/data/
+
+# Downloaded Whisper models
+api/models/

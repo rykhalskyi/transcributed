@@ -1,12 +1,15 @@
 import asyncio
 import json
 import sys
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 import aio_pika
+import psycopg
 import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +23,12 @@ from transcributed.messaging.topology import declare_topology, retry_routing_key
 from transcributed.models import Artifact, ProjectItem, Task
 from transcributed.services.spec import resolve_input_path
 from transcributed.services.status import refresh_run_status
-from transcributed.worker.transcriber import FakeTranscriber, Transcriber
+from transcributed.worker.transcriber import (
+    FakeTranscriber,
+    FasterWhisperTranscriber,
+    TaskCancelled,
+    Transcriber,
+)
 
 settings = get_settings()
 log = structlog.get_logger(__name__)
@@ -36,6 +44,7 @@ class TaskDisposition(StrEnum):
     SUCCEEDED = "succeeded"
     RETRY = "retry"
     FAILED = "failed"
+    CANCELLED = "cancelled"
     NOOP = "noop"
 
 
@@ -46,6 +55,55 @@ class TaskOutcome:
     run_id: UUID | None = None
     attempts: int = 0
     retry_routing_key: str | None = None
+
+
+def create_transcriber() -> Transcriber:
+    if settings.worker_backend == "fake":
+        return FakeTranscriber()
+    if settings.worker_backend == "faster-whisper":
+        return FasterWhisperTranscriber(
+            device=settings.whisper_device,
+            compute_type=settings.whisper_compute_type,
+            model_dir=settings.whisper_model_dir,
+            beam_size=settings.whisper_beam_size,
+            vad_filter=settings.whisper_vad_filter,
+            ffmpeg_binary=settings.ffmpeg_binary,
+        )
+    raise ValueError(f"Unsupported worker backend: {settings.worker_backend}")
+
+
+def sync_database_url(url: str) -> str:
+    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+class CancellationCheck:
+    def __init__(self, task_id: UUID, dsn: str) -> None:
+        self.task_id = task_id
+        self.dsn = dsn
+        self._connection: psycopg.Connection[Any] | None = None
+
+    def __call__(self) -> bool:
+        try:
+            if self._connection is None or self._connection.closed:
+                self._connection = psycopg.connect(self.dsn, autocommit=True)
+            row = self._connection.execute(
+                "SELECT status FROM tasks WHERE id = %s",
+                (self.task_id,),
+            ).fetchone()
+        except Exception:
+            log.warning(
+                "cancel_check_failed",
+                task_id=str(self.task_id),
+                exc_info=True,
+            )
+            return False
+        return row is not None and row[0] == TaskStatus.CANCELLED.value
+
+    def close(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
 
 
 async def load_task(session: AsyncSession, task_id: UUID) -> Task | None:
@@ -70,7 +128,11 @@ async def process_task(
         log.warning("task_not_found", task_id=str(task_id))
         return TaskOutcome(TaskDisposition.NOOP)
 
-    if task.status in (TaskStatus.SUCCEEDED, TaskStatus.FAILED):
+    if task.status in (
+        TaskStatus.SUCCEEDED,
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+    ):
         log.info("task_already_terminal", task_id=str(task_id), status=task.status)
         return TaskOutcome(TaskDisposition.NOOP)
 
@@ -114,8 +176,21 @@ async def process_task(
             settings.allowed_extensions,
         )
 
-        worker = transcriber or FakeTranscriber()
-        files = worker.transcribe(resolved.absolute_path, task.spec)
+        worker = transcriber or create_transcriber()
+        cancel_check = CancellationCheck(
+            task.id,
+            sync_database_url(settings.database_url),
+        )
+        started = time.monotonic()
+        try:
+            files = worker.transcribe(
+                resolved.absolute_path,
+                task.spec,
+                should_cancel=cancel_check,
+            )
+        finally:
+            cancel_check.close()
+        elapsed_seconds = round(time.monotonic() - started, 3)
 
         metadata = json.dumps(
             {
@@ -124,12 +199,32 @@ async def process_task(
                 "project_id": str(task.run.project_id),
                 "source_path": task.project_item.video.path,
                 "spec": task.spec,
-                "transcriber": "fake",
+                "transcriber": type(worker).__name__,
+                "model": task.spec.get("model"),
+                "elapsed_seconds": elapsed_seconds,
                 "generated_at": datetime.now(UTC).isoformat(),
             },
             ensure_ascii=False,
             indent=2,
         )
+
+        locked_status = await session.scalar(
+            select(Task.status).where(Task.id == task.id).with_for_update()
+        )
+        if locked_status != TaskStatus.PROCESSING:
+            current_task_id = task.id
+            current_run_id = task.run_id
+            current_attempts = task.attempts
+            await session.rollback()
+            if locked_status == TaskStatus.CANCELLED:
+                log.info("task_cancelled", task_id=str(current_task_id))
+                return TaskOutcome(
+                    TaskDisposition.CANCELLED,
+                    task_id=current_task_id,
+                    run_id=current_run_id,
+                    attempts=current_attempts,
+                )
+            return TaskOutcome(TaskDisposition.NOOP)
 
         await session.execute(delete(Artifact).where(Artifact.task_id == task.id))
         artifacts = [
@@ -169,13 +264,47 @@ async def process_task(
             run_id=task.run_id,
             attempts=task.attempts,
         )
+    except TaskCancelled:
+        await session.rollback()
+        task = await session.get(Task, task_id, populate_existing=True)
+        if task is not None:
+            await refresh_run_status(session, task.run_id)
+            await session.commit()
+        log.info(
+            "task_cancelled",
+            task_id=str(task_id),
+            run_id=str(task.run_id) if task is not None else None,
+        )
+        return TaskOutcome(
+            TaskDisposition.CANCELLED,
+            task_id=task.id if task is not None else task_id,
+            run_id=task.run_id if task is not None else None,
+            attempts=task.attempts if task is not None else 0,
+        )
     except Exception as exc:
         await session.rollback()
         log.exception("task_failed", task_id=str(task_id), run_id=str(task.run_id))
-        task = await session.get(Task, task_id)
+        task = await session.scalar(
+            select(Task)
+            .where(Task.id == task_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if task is None:
             return TaskOutcome(TaskDisposition.NOOP)
-        if task.status == TaskStatus.SUCCEEDED:
+        if task.status in (TaskStatus.SUCCEEDED, TaskStatus.CANCELLED):
+            status = task.status
+            attempts = task.attempts
+            run_id = task.run_id
+            await session.rollback()
+            if status == TaskStatus.CANCELLED:
+                log.info("task_cancelled", task_id=str(task_id))
+                return TaskOutcome(
+                    TaskDisposition.CANCELLED,
+                    task_id=task_id,
+                    run_id=run_id,
+                    attempts=attempts,
+                )
             return TaskOutcome(TaskDisposition.NOOP)
 
         task.error = str(exc)[:4000]
@@ -217,7 +346,10 @@ async def _mark_enqueued(task_id: UUID) -> None:
 async def _mark_retry_publish_failed(task_id: UUID) -> None:
     async with SessionLocal() as session:
         task = await session.get(Task, task_id)
-        if task is None or task.status == TaskStatus.SUCCEEDED:
+        if task is None or task.status in (
+            TaskStatus.SUCCEEDED,
+            TaskStatus.CANCELLED,
+        ):
             return
         task.status = TaskStatus.FAILED
         task.error = "failed to publish retry message"
@@ -293,6 +425,8 @@ async def run_once() -> int:
                 await engine.dispose()
                 return 1
             await _mark_enqueued(task_id)
+            await message.ack()
+        elif outcome.disposition == TaskDisposition.CANCELLED:
             await message.ack()
         elif outcome.disposition == TaskDisposition.FAILED:
             await message.reject(requeue=False)

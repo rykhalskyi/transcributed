@@ -36,7 +36,13 @@ class FakePublisher:
 
 
 class AlwaysFailTranscriber:
-    def transcribe(self, input_path: Path, spec: dict[str, Any]) -> dict[str, str]:
+    def transcribe(
+        self,
+        input_path: Path,
+        spec: dict[str, Any],
+        *,
+        should_cancel: Any | None = None,
+    ) -> dict[str, str]:
         raise RuntimeError("transcription failed")
 
 
@@ -50,9 +56,11 @@ def publisher_override(publisher: FakePublisher) -> Iterator[None]:
 
 
 def _process(task_id: str, transcriber: Any | None = None) -> TaskOutcome:
+    selected = transcriber if transcriber is not None else FakeTranscriber()
+
     async def run() -> TaskOutcome:
         async with SessionLocal() as session:
-            return await process_task(session, UUID(task_id), transcriber=transcriber)
+            return await process_task(session, UUID(task_id), transcriber=selected)
 
     return asyncio.run(run())
 

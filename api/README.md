@@ -59,3 +59,7 @@ uv run mypy src tests
 - Failed tasks are retried through `transcription.retry.1m` and
   `transcription.retry.10m` up to `max_attempts`; terminal failures are routed to
   the `transcription.dead` queue.
+- Cancel a task with `POST /api/v1/tasks/{id}/cancel` or a whole run with
+  `POST /api/v1/runs/{id}/cancel`. Cancelling marks non-terminal tasks `cancelled`,
+  discards any in-progress output, and unlocks the project for a new run. Workers
+  check the task status about every 30 seconds of audio and stop cooperatively.
