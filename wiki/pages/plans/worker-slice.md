@@ -25,15 +25,17 @@ Already implemented:
 - `GET /metrics`, `/healthz`, `/readyz` on the API.
 - No Dockerfile, no Kubernetes manifests, no CI, no `faster-whisper` dependency.
 
-Not in scope: UI, auth, GPU, KEDA tuning beyond a working baseline, NAS scanning.
+Not in scope: UI, auth, GPU, KEDA tuning beyond a working baseline, NAS scanning,
+per-model worker images (tiny/small/medium) selected at start.
 
 ## Phase 0 — Preconditions and decisions
 
 Confirm or decide before writing code:
 
-1. **Model delivery: decided (D-12).** Bake the `small` model into the worker image.
-   The image layer lives on the node's container storage; there is no model PVC and
-   no runtime download. Video remains the only PVC-backed volume (NAS, read-only).
+1. **Model delivery: decided (D-12, D-15).** Bake the `small` model into the worker
+   image. The image layer lives on the node's container storage; there is no model PVC
+   and no runtime download. Video remains the only PVC-backed volume (NAS, read-only).
+   Separate tiny/small/medium images selected at start are deferred.
 2. **Deployment tooling: decided (D-13).** Ship the app as a Helm chart; install
    KEDA and the CloudNativePG operator from their charts. No Kustomize.
 3. **Cluster prerequisites.** KEDA, CloudNativePG, and an NFS CSI driver are
@@ -148,8 +150,8 @@ Key workloads:
 - **API**: Deployment + Service; readiness on `/readyz`.
 - **Worker**: KEDA `ScaledJob` with `parallelism: 1`, `completions: 1`,
   `backoffLimit: 0` (queue owns retries), `restartPolicy: Never`,
-  `ttlSecondsAfterFinished: 900`, `activeDeadlineSeconds` sized for the longest
-  lecture, `terminationGracePeriodSeconds: 120`, CPU/memory requests and limits, and
+  `ttlSecondsAfterFinished: 900`, `activeDeadlineSeconds` generous (for example 12h)
+  or omitted, `terminationGracePeriodSeconds: 120`, CPU/memory requests and limits, and
   node affinity for the i5 node.
 - **KEDA trigger**: RabbitMQ `QueueLength` on `transcription.jobs`, `value: "1"`,
   `maxReplicaCount: 1` initially, `TriggerAuthentication` from a Secret. One job per
@@ -203,6 +205,12 @@ drills.
 
 ## Risks
 
+- **Long lectures**: a 2h+ lecture can take hours on CPU and a failed or evicted Job
+  restarts from zero, consuming an attempt. Keep `maxReplicaCount` low, use a generous
+  deadline, and treat chunking/checkpointing as a later spec change.
+- **Measured memory**: `medium` on a 5-minute clip peaked at ~1.7 GiB RSS. A 2-hour
+  lecture adds ~0.5 GiB for decoded audio, so budget roughly 3 GiB limit / 2 GiB
+  request for `medium`; `small` is lower.
 - **Python 3.14 wheels** for `ctranslate2`/`faster-whisper` may lag; pin the worker to
   3.13 if needed.
 - **Memory**: `small` int8 plus decoding can approach 2 GiB; measure before raising

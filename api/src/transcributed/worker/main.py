@@ -68,6 +68,7 @@ def create_transcriber() -> Transcriber:
             beam_size=settings.whisper_beam_size,
             vad_filter=settings.whisper_vad_filter,
             ffmpeg_binary=settings.ffmpeg_binary,
+            local_files_only=settings.whisper_local_files_only,
         )
     raise ValueError(f"Unsupported worker backend: {settings.worker_backend}")
 

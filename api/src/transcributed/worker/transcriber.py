@@ -1,10 +1,17 @@
 import json
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+import structlog
+
 CANCEL_CHECK_INTERVAL_SECONDS = 30.0
+PROGRESS_INTERVAL_SECONDS = 60.0
+SAMPLE_RATE = 16000
+
+log = structlog.get_logger(__name__)
 
 
 class TaskCancelled(Exception):
@@ -79,7 +86,7 @@ def language_code(language: Any) -> str | None:
     return str(language)
 
 
-_MODEL_CACHE: dict[tuple[str, str, str, str | None], Any] = {}
+_MODEL_CACHE: dict[tuple[str, str, str, str | None, bool], Any] = {}
 
 
 class FasterWhisperTranscriber:
@@ -92,6 +99,7 @@ class FasterWhisperTranscriber:
         beam_size: int = 5,
         vad_filter: bool = True,
         ffmpeg_binary: str = "ffmpeg",
+        local_files_only: bool = False,
     ) -> None:
         self.device = device
         self.compute_type = compute_type
@@ -99,6 +107,7 @@ class FasterWhisperTranscriber:
         self.beam_size = beam_size
         self.vad_filter = vad_filter
         self.ffmpeg_binary = ffmpeg_binary
+        self.local_files_only = local_files_only
 
     def _ffmpeg_command(self, input_path: Path) -> list[str]:
         return [
@@ -149,6 +158,7 @@ class FasterWhisperTranscriber:
             self.device,
             self.compute_type,
             str(self.model_dir) if self.model_dir is not None else None,
+            self.local_files_only,
         )
         model = _MODEL_CACHE.get(key)
         if model is None:
@@ -157,11 +167,19 @@ class FasterWhisperTranscriber:
             kwargs: dict[str, Any] = {
                 "device": self.device,
                 "compute_type": self.compute_type,
+                "local_files_only": self.local_files_only,
             }
             if self.model_dir is not None:
                 kwargs["download_root"] = str(self.model_dir)
             model = WhisperModel(model_name, **kwargs)
             _MODEL_CACHE[key] = model
+            log.info(
+                "model_loaded",
+                model=model_name,
+                device=self.device,
+                compute_type=self.compute_type,
+                local_files_only=self.local_files_only,
+            )
         return model
 
     def transcribe(
@@ -171,9 +189,17 @@ class FasterWhisperTranscriber:
         *,
         should_cancel: Callable[[], bool] | None = None,
     ) -> dict[str, str]:
+        started = time.monotonic()
         model_name = str(spec.get("model") or "small")
         model = self._load_model(model_name)
         audio = self._decode_audio(input_path)
+        duration_seconds = len(audio) / SAMPLE_RATE
+        log.info(
+            "audio_decoded",
+            path=str(input_path),
+            duration_seconds=round(duration_seconds, 1),
+            decode_seconds=round(time.monotonic() - started, 1),
+        )
 
         segments_iter, _info = model.transcribe(
             audio,
@@ -184,11 +210,21 @@ class FasterWhisperTranscriber:
         )
         segments: list[TranscriptSegment] = []
         next_cancel_check = 0.0
+        next_progress = 0.0
         for segment in segments_iter:
             if should_cancel is not None and segment.end >= next_cancel_check:
                 if should_cancel():
                     raise TaskCancelled("cancelled by user")
                 next_cancel_check = segment.end + CANCEL_CHECK_INTERVAL_SECONDS
+            if segment.end >= next_progress:
+                log.info(
+                    "transcription_progress",
+                    path=str(input_path),
+                    audio_seconds=round(float(segment.end), 1),
+                    elapsed_seconds=round(time.monotonic() - started, 1),
+                    text=str(segment.text).strip()[:200],
+                )
+                next_progress = segment.end + PROGRESS_INTERVAL_SECONDS
             segments.append(
                 TranscriptSegment(
                     start=float(segment.start),
@@ -196,6 +232,14 @@ class FasterWhisperTranscriber:
                     text=str(segment.text).strip(),
                 )
             )
+
+        log.info(
+            "transcription_finished",
+            path=str(input_path),
+            audio_seconds=round(duration_seconds, 1),
+            segments=len(segments),
+            elapsed_seconds=round(time.monotonic() - started, 1),
+        )
 
         formats = set(spec.get("output_formats") or ["txt"])
         files: dict[str, str] = {}

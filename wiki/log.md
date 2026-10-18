@@ -9,3 +9,5 @@
 ## [2026-10-18] update | worker-slice plan — model baked into the worker image (D-12)
 ## [2026-10-18] update | worker-slice plan — Helm chart instead of Kustomize (D-13)
 ## [2026-10-18] change | Add task/run cancellation with cancelled status
+## [2026-10-18] update | worker-slice plan — bake small; per-model images deferred (D-15)
+## [2026-10-18] update | worker-slice plan — measured medium memory (~1.7 GiB)
