@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Local media samples and generated transcripts
+api/samples/*
+!api/samples/.gitkeep
+api/data/
