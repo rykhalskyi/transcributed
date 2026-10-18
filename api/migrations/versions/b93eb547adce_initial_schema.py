@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 10874d9a8b30
+Revision ID: b93eb547adce
 Revises:
-Create Date: 2026-10-17 20:33:56.704460
+Create Date: 2026-10-18 18:35:30.373589
 
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "10874d9a8b30"
+revision: str = "b93eb547adce"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -124,7 +124,6 @@ def upgrade() -> None:
                 "completed",
                 "partially_failed",
                 "failed",
-                "cancelled",
                 name="runstatus",
                 native_enum=False,
                 create_constraint=True,
@@ -187,7 +186,6 @@ def upgrade() -> None:
         sa.Column("enqueued_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("output_dir", sa.Text(), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column(
             "created_at",
@@ -219,7 +217,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("task_id", sa.Uuid(), nullable=False),
         sa.Column("format", sa.String(length=20), nullable=False),
-        sa.Column("path", sa.Text(), nullable=False),
+        sa.Column("filename", sa.String(length=255), nullable=False),
+        sa.Column("content_type", sa.String(length=100), nullable=False),
+        sa.Column("content", sa.Text(), nullable=True),
         sa.Column("size_bytes", sa.BigInteger(), nullable=True),
         sa.Column(
             "created_at",

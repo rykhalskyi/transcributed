@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     rabbitmq_enabled: bool = True
     rabbitmq_exchange: str = "transcription"
     rabbitmq_jobs_queue: str = "transcription.jobs"
+    rabbitmq_connect_timeout_seconds: float = 5.0
 
     nas_input_root: Path = Path("/nas/lectures")
 

@@ -9,6 +9,10 @@ RETRY_1M_QUEUE = "transcription.retry.1m"
 RETRY_10M_QUEUE = "transcription.retry.10m"
 
 
+def retry_routing_key(attempts: int) -> str:
+    return RETRY_1M_QUEUE if attempts <= 1 else RETRY_10M_QUEUE
+
+
 @dataclass(frozen=True)
 class Topology:
     exchange: AbstractExchange

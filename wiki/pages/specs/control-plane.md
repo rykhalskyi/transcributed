@@ -46,6 +46,12 @@ Run                            one explicit Start action
 - Each Start creates a run snapshot; re-runs create new runs (D-06).
 - Transcript artifacts are stored as text in PostgreSQL and downloaded through the API;
   the NAS is read-only input (D-08, supersedes D-07).
+- Projects are living lists: they can be edited between runs, and the item list is
+  locked only while a run is queued or running (D-09).
+- Failed tasks retry through delayed queues up to `max_attempts`; terminal failures go
+  to the dead-letter queue (D-10).
+- Start fails with `503` and removes the new run when the broker is unavailable or a
+  publish is not confirmed (D-11).
 
 ## Data model
 
@@ -93,12 +99,25 @@ Adding an item accepts a path such as `2026/spring/lecture-01.mp4`, not a file b
 ## Start semantics
 
 1. Refuse to start if the project already has an active run.
-2. Snapshot project defaults and item overrides into the new run.
-3. Preflight each item: the source file still exists and matches the stored video
+2. Preflight each item: the source file still exists and matches the stored video
    version (`size_bytes`, `mtime`).
+3. Snapshot project defaults and item overrides into the new run.
 4. Create one task per included item and publish one queue message per task.
-5. Lock the item list while the run is active.
-6. As tasks finish, derive run and project status.
+5. If the broker is enabled but unavailable, or any publish is not confirmed, return
+   `503` and delete the new run and tasks (D-11).
+6. Lock the item list while the run is queued or running; unlock it when the run
+   reaches a terminal state.
+7. As tasks finish, derive run and project status.
+
+## Retry policy
+
+- A processing failure increments `attempts`. While `attempts < max_attempts`, the
+  task returns to `queued` and its message is republished to
+  `transcription.retry.1m` (first retry) or `transcription.retry.10m` (later retries).
+- When `attempts` reaches `max_attempts`, the task becomes `failed` and the message is
+  rejected to `transcription.dead`.
+- Retries keep the run `queued`/`running`; a terminal failure updates the run and
+  project outcome.
 
 A queue message contains only the task identity, for example:
 
@@ -141,8 +160,8 @@ cluster node IPs. No workload writes to the NAS; transcripts live in PostgreSQL.
 
 ## Open questions
 
-- Is a project a one-shot snapshot after the first start, or a living list that can be
-  extended and restarted for only new or failed items?
+- Should a re-run process every included item, or only items without a successful
+  transcript for the current spec?
 - Per-item overrides: language per item (proposed yes) and model shared per project?
 - May the same video belong to multiple projects, each with its own transcript output?
 - Naming: keep `Project` in the API and database, or use `Collection`/`Set`?

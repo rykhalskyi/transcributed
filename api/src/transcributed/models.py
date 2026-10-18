@@ -280,7 +280,6 @@ class Artifact(Base, TimestampMixin):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    path: Mapped[str | None] = mapped_column(Text, nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     task: Mapped[Task] = relationship(back_populates="artifacts")

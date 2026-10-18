@@ -15,8 +15,10 @@ from transcributed.schemas import (
     ProjectItemResult,
     ProjectItemsAddRequest,
     ProjectItemsAddResponse,
+    ProjectItemUpdate,
     ProjectUpdate,
 )
+from transcributed.services.runs import has_active_run
 from transcributed.services.spec import build_effective_spec, resolve_input_path
 from transcributed.services.videos import get_or_create_video
 
@@ -36,8 +38,14 @@ async def create_project(session: AsyncSession, payload: ProjectCreate) -> Proje
     return project
 
 
-async def list_projects(session: AsyncSession) -> Sequence[Project]:
-    result = await session.scalars(select(Project).order_by(Project.created_at.desc()))
+async def list_projects(
+    session: AsyncSession,
+    limit: int = 100,
+    offset: int = 0,
+) -> Sequence[Project]:
+    result = await session.scalars(
+        select(Project).order_by(Project.created_at.desc()).limit(limit).offset(offset)
+    )
     return result.all()
 
 
@@ -48,13 +56,22 @@ async def get_project(session: AsyncSession, project_id: UUID) -> Project:
     return project
 
 
+async def get_project_for_update(session: AsyncSession, project_id: UUID) -> Project:
+    project = await session.scalar(
+        select(Project).where(Project.id == project_id).with_for_update()
+    )
+    if project is None:
+        raise NotFoundError("Project not found")
+    return project
+
+
 async def update_project(
     session: AsyncSession,
     project: Project,
     payload: ProjectUpdate,
 ) -> Project:
-    if project.status != ProjectStatus.DRAFT:
-        raise ConflictError("Only draft projects can be edited")
+    if await has_active_run(session, project.id):
+        raise ConflictError("Project cannot be edited while a run is active")
 
     data = payload.model_dump(exclude_unset=True)
     if "defaults" in data and data["defaults"] is not None:
@@ -73,8 +90,8 @@ async def update_project(
 
 
 async def delete_project(session: AsyncSession, project: Project) -> None:
-    if project.status != ProjectStatus.DRAFT:
-        raise ConflictError("Only draft projects can be deleted")
+    if await has_active_run(session, project.id):
+        raise ConflictError("Project cannot be deleted while a run is active")
     await session.delete(project)
     await session.commit()
 
@@ -84,11 +101,11 @@ async def add_items(
     project: Project,
     request: ProjectItemsAddRequest,
 ) -> ProjectItemsAddResponse:
-    if project.status != ProjectStatus.DRAFT:
-        raise ConflictError("Items can only be added while the project is a draft")
+    if await has_active_run(session, project.id):
+        raise ConflictError("Items cannot be added while a run is active")
 
     if len(request.items) > settings.max_batch_items:
-        raise ConflictError(
+        raise ValidationError(
             f"A project can add at most {settings.max_batch_items} items per request"
         )
 
@@ -174,9 +191,25 @@ async def add_items(
     )
 
 
+def _to_item_read(item: ProjectItem, latest_task: Task | None) -> ProjectItemRead:
+    return ProjectItemRead(
+        id=item.id,
+        project_id=item.project_id,
+        video_id=item.video_id,
+        path=item.video.path,
+        position=item.position,
+        included=item.included,
+        spec_overrides=item.spec_overrides,
+        latest_task_status=(latest_task.status if latest_task is not None else None),
+        latest_task_id=(latest_task.id if latest_task is not None else None),
+    )
+
+
 async def list_project_items(
     session: AsyncSession,
     project_id: UUID,
+    limit: int = 100,
+    offset: int = 0,
 ) -> Sequence[ProjectItemRead]:
     items = (
         await session.scalars(
@@ -184,6 +217,8 @@ async def list_project_items(
             .where(ProjectItem.project_id == project_id)
             .options(selectinload(ProjectItem.video))
             .order_by(ProjectItem.position)
+            .limit(limit)
+            .offset(offset)
         )
     ).all()
     if not items:
@@ -200,20 +235,58 @@ async def list_project_items(
     for task in task_rows:
         latest_tasks.setdefault(task.project_item_id, task)
 
-    return [
-        ProjectItemRead(
-            id=item.id,
-            project_id=item.project_id,
-            video_id=item.video_id,
-            path=item.video.path,
-            position=item.position,
-            included=item.included,
-            spec_overrides=item.spec_overrides,
-            latest_task_status=(latest_tasks[item.id].status if item.id in latest_tasks else None),
-            latest_task_id=(latest_tasks[item.id].id if item.id in latest_tasks else None),
+    return [_to_item_read(item, latest_tasks.get(item.id)) for item in items]
+
+
+async def update_item(
+    session: AsyncSession,
+    project: Project,
+    item_id: UUID,
+    payload: ProjectItemUpdate,
+) -> ProjectItemRead:
+    if await has_active_run(session, project.id):
+        raise ConflictError("Items cannot be edited while a run is active")
+
+    item = await session.scalar(
+        select(ProjectItem)
+        .where(
+            ProjectItem.id == item_id,
+            ProjectItem.project_id == project.id,
         )
-        for item in items
-    ]
+        .options(selectinload(ProjectItem.video))
+    )
+    if item is None:
+        raise NotFoundError("Project item not found")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    if data.get("included") is not None:
+        item.included = data["included"]
+
+    overrides = dict(item.spec_overrides or {})
+    overrides_changed = False
+    for key in ("language", "model"):
+        if key not in data:
+            continue
+        overrides_changed = True
+        if data[key] is None:
+            overrides.pop(key, None)
+        else:
+            overrides[key] = data[key]
+
+    if overrides_changed:
+        build_effective_spec(project.defaults, overrides or None)
+        item.spec_overrides = overrides or None
+
+    await session.commit()
+
+    latest_task = await session.scalar(
+        select(Task)
+        .where(Task.project_item_id == item.id)
+        .order_by(Task.created_at.desc())
+        .limit(1)
+    )
+    return _to_item_read(item, latest_task)
 
 
 async def remove_item(
@@ -221,8 +294,8 @@ async def remove_item(
     project: Project,
     item_id: UUID,
 ) -> None:
-    if project.status != ProjectStatus.DRAFT:
-        raise ConflictError("Items can only be removed while the project is a draft")
+    if await has_active_run(session, project.id):
+        raise ConflictError("Items cannot be removed while a run is active")
 
     item = await session.scalar(
         select(ProjectItem).where(

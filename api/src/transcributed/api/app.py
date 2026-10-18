@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         exchange_name=settings.rabbitmq_exchange,
         jobs_queue=settings.rabbitmq_jobs_queue,
         enabled=settings.rabbitmq_enabled,
+        connect_timeout_seconds=settings.rabbitmq_connect_timeout_seconds,
     )
     await publisher.connect()
     app.state.publisher = publisher
@@ -67,12 +68,18 @@ def create_app() -> FastAPI:
         return HealthResponse(status="ok")
 
     @app.get("/readyz", response_model=HealthResponse)
-    async def readyz() -> HealthResponse:
+    async def readyz(request: Request) -> HealthResponse:
         try:
             async with engine.connect() as connection:
                 await connection.execute(text("SELECT 1"))
         except Exception as exc:
             raise HTTPException(status_code=503, detail="database unavailable") from exc
+
+        publisher = getattr(request.app.state, "publisher", None)
+        if settings.rabbitmq_enabled and (
+            publisher is None or not await publisher.ensure_connected()
+        ):
+            raise HTTPException(status_code=503, detail="task queue unavailable")
         return HealthResponse(status="ok")
 
     @app.get("/metrics")

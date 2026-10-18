@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from transcributed.enums import ProjectStatus, RunStatus, TaskStatus
 
 Language = Literal["en", "ru", "de", "auto"]
+Model = Literal["tiny", "base", "small", "medium", "large-v3"]
 OutputFormat = Literal["vtt", "json", "txt"]
 
 DEFAULT_OUTPUT_FORMATS: list[OutputFormat] = ["txt"]
@@ -16,7 +17,7 @@ class ProjectDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     language: Language = "auto"
-    model: str = Field(default="small", min_length=1, max_length=50)
+    model: Model = "small"
     output_formats: list[OutputFormat] = Field(
         default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS),
         min_length=1,
@@ -56,11 +57,17 @@ class ProjectRead(BaseModel):
 class ProjectItemInput(BaseModel):
     path: str = Field(min_length=1, max_length=1024)
     language: Language | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=50)
+    model: Model | None = None
+
+
+class ProjectItemUpdate(BaseModel):
+    included: bool | None = None
+    language: Language | None = None
+    model: Model | None = None
 
 
 class ProjectItemsAddRequest(BaseModel):
-    items: list[ProjectItemInput] = Field(min_length=1, max_length=500)
+    items: list[ProjectItemInput] = Field(min_length=1)
 
 
 class ProjectItemResult(BaseModel):

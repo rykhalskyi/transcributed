@@ -6,12 +6,17 @@ from pathlib import Path
 
 import psycopg
 import pytest
+from alembic import command
+from alembic.config import Config
+
+API_ROOT = Path(__file__).resolve().parents[1]
 
 TEST_DB = "transcributed_test"
 ADMIN_URL = "postgresql://transcributed:transcributed@localhost:5432/postgres"
 TEST_DATABASE_URL = (
     "postgresql+psycopg://transcributed:transcributed@localhost:5432/transcributed_test"
 )
+TEST_DSN = "postgresql://transcributed:transcributed@localhost:5432/transcributed_test"
 TEST_ROOT = Path(tempfile.mkdtemp(prefix="transcributed-tests-"))
 
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
@@ -34,13 +39,15 @@ from sqlalchemy import text  # noqa: E402
 
 from transcributed.api.app import app  # noqa: E402
 from transcributed.db import engine  # noqa: E402
-from transcributed.models import Base  # noqa: E402
 
 
-async def _reset_schema() -> None:
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
+def _reset_schema() -> None:
+    with psycopg.connect(TEST_DSN, autocommit=True) as connection:
+        connection.execute("DROP SCHEMA public CASCADE")
+        connection.execute("CREATE SCHEMA public")
+
+    config = Config(str(API_ROOT / "alembic.ini"))
+    command.upgrade(config, "head")
 
 
 async def _truncate() -> None:
@@ -55,7 +62,7 @@ async def _truncate() -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def database_schema() -> Iterator[None]:
-    asyncio.run(_reset_schema())
+    _reset_schema()
     yield
 
 
@@ -76,3 +83,11 @@ def sample_video() -> str:
     path = TEST_ROOT / "samples" / "lecture-01.mp4"
     path.write_bytes(b"fake video content")
     return "lecture-01.mp4"
+
+
+@pytest.fixture
+def sample_videos() -> list[str]:
+    names = ["lecture-01.mp4", "lecture-02.mp4"]
+    for name in names:
+        (TEST_ROOT / "samples" / name).write_bytes(b"fake video content")
+    return names

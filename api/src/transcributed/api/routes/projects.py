@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from transcributed.api.deps import get_publisher
@@ -11,6 +11,7 @@ from transcributed.schemas import (
     ProjectItemRead,
     ProjectItemsAddRequest,
     ProjectItemsAddResponse,
+    ProjectItemUpdate,
     ProjectRead,
     ProjectUpdate,
     RunRead,
@@ -33,9 +34,11 @@ async def create_project(
 
 @router.get("", response_model=list[ProjectRead])
 async def list_projects(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[ProjectRead]:
-    projects = await project_service.list_projects(session)
+    projects = await project_service.list_projects(session, limit=limit, offset=offset)
     return [ProjectRead.model_validate(project) for project in projects]
 
 
@@ -54,7 +57,7 @@ async def update_project(
     payload: ProjectUpdate,
     session: AsyncSession = Depends(get_session),
 ) -> ProjectRead:
-    project = await project_service.get_project(session, project_id)
+    project = await project_service.get_project_for_update(session, project_id)
     project = await project_service.update_project(session, project, payload)
     return ProjectRead.model_validate(project)
 
@@ -64,7 +67,7 @@ async def delete_project(
     project_id: UUID,
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    project = await project_service.get_project(session, project_id)
+    project = await project_service.get_project_for_update(session, project_id)
     await project_service.delete_project(session, project)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -79,17 +82,24 @@ async def add_project_items(
     payload: ProjectItemsAddRequest,
     session: AsyncSession = Depends(get_session),
 ) -> ProjectItemsAddResponse:
-    project = await project_service.get_project(session, project_id)
+    project = await project_service.get_project_for_update(session, project_id)
     return await project_service.add_items(session, project, payload)
 
 
 @router.get("/{project_id}/items", response_model=list[ProjectItemRead])
 async def list_project_items(
     project_id: UUID,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[ProjectItemRead]:
     await project_service.get_project(session, project_id)
-    items = await project_service.list_project_items(session, project_id)
+    items = await project_service.list_project_items(
+        session,
+        project_id,
+        limit=limit,
+        offset=offset,
+    )
     return list(items)
 
 
@@ -102,9 +112,20 @@ async def remove_project_item(
     item_id: UUID,
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    project = await project_service.get_project(session, project_id)
+    project = await project_service.get_project_for_update(session, project_id)
     await project_service.remove_item(session, project, item_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/{project_id}/items/{item_id}", response_model=ProjectItemRead)
+async def update_project_item(
+    project_id: UUID,
+    item_id: UUID,
+    payload: ProjectItemUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> ProjectItemRead:
+    project = await project_service.get_project_for_update(session, project_id)
+    return await project_service.update_item(session, project, item_id, payload)
 
 
 @router.post(
@@ -117,8 +138,7 @@ async def start_project(
     session: AsyncSession = Depends(get_session),
     publisher: TaskPublisher = Depends(get_publisher),
 ) -> StartProjectResponse:
-    project = await project_service.get_project(session, project_id)
-    run, tasks, enqueued = await run_service.start_project(session, project, publisher)
+    run, tasks, enqueued = await run_service.start_project(session, project_id, publisher)
     return StartProjectResponse(
         run=RunRead.model_validate(run),
         task_ids=[task.id for task in tasks],
@@ -130,8 +150,15 @@ async def start_project(
 @router.get("/{project_id}/runs", response_model=list[RunRead])
 async def list_project_runs(
     project_id: UUID,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[RunRead]:
     await project_service.get_project(session, project_id)
-    runs = await run_service.list_project_runs(session, project_id)
+    runs = await run_service.list_project_runs(
+        session,
+        project_id,
+        limit=limit,
+        offset=offset,
+    )
     return [RunRead.model_validate(run) for run in runs]

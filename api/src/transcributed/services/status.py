@@ -9,7 +9,9 @@ from transcributed.models import Project, Run, Task
 
 
 async def refresh_run_status(session: AsyncSession, run_id: UUID) -> Run | None:
-    run = await session.get(Run, run_id)
+    run = await session.scalar(
+        select(Run).where(Run.id == run_id).with_for_update()
+    )
     if run is None:
         return None
 

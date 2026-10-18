@@ -20,20 +20,35 @@ class TaskPublisher:
         exchange_name: str,
         jobs_queue: str,
         enabled: bool = True,
+        connect_timeout_seconds: float = 5.0,
     ) -> None:
         self.url = url
         self.exchange_name = exchange_name
         self.jobs_queue = jobs_queue
         self.enabled = enabled
+        self.connect_timeout_seconds = connect_timeout_seconds
         self._connection: AbstractConnection | None = None
         self._channel: AbstractChannel | None = None
         self._exchange: AbstractExchange | None = None
 
-    async def connect(self) -> None:
-        if not self.enabled or self._exchange is not None:
-            return
+    @property
+    def is_connected(self) -> bool:
+        return (
+            self._exchange is not None
+            and self._connection is not None
+            and not self._connection.is_closed
+        )
+
+    async def connect(self) -> bool:
+        if not self.enabled:
+            return False
+        if self.is_connected:
+            return True
         try:
-            self._connection = await aio_pika.connect_robust(self.url)
+            self._connection = await aio_pika.connect_robust(
+                self.url,
+                timeout=self.connect_timeout_seconds,
+            )
             self._channel = await self._connection.channel(publisher_confirms=True)
             topology = await declare_topology(
                 self._channel,
@@ -44,12 +59,17 @@ class TaskPublisher:
         except Exception:
             log.warning("rabbitmq_connect_failed", url=self.url, exc_info=True)
             await self.close()
+            return False
+        return True
+
+    async def ensure_connected(self) -> bool:
+        return await self.connect()
 
     async def publish_task(self, task_id: UUID, run_id: UUID) -> bool:
         if not self.enabled:
             return False
-        if self._exchange is None:
-            await self.connect()
+        if not self.is_connected:
+            await self.ensure_connected()
         if self._exchange is None:
             return False
 

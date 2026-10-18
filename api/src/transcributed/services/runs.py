@@ -6,14 +6,19 @@ from typing import Protocol
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from transcributed.config import get_settings
 from transcributed.enums import ProjectStatus, RunStatus
-from transcributed.errors import ConflictError, NotFoundError, ValidationError
+from transcributed.errors import (
+    ConflictError,
+    NotFoundError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from transcributed.models import Project, ProjectItem, Run, Task
 from transcributed.services.spec import (
     build_effective_spec,
@@ -29,14 +34,54 @@ log = structlog.get_logger(__name__)
 class TaskEnqueuer(Protocol):
     enabled: bool
 
+    async def ensure_connected(self) -> bool: ...
+
     async def publish_task(self, task_id: UUID, run_id: UUID) -> bool: ...
+
+
+async def has_active_run(session: AsyncSession, project_id: UUID) -> bool:
+    active_run = await session.scalar(
+        select(Run.id).where(
+            Run.project_id == project_id,
+            Run.status.in_([RunStatus.QUEUED, RunStatus.RUNNING]),
+        )
+    )
+    return active_run is not None
+
+
+async def _ensure_publisher_ready(publisher: TaskEnqueuer | None) -> None:
+    if publisher is None or not publisher.enabled:
+        return
+    if not await publisher.ensure_connected():
+        raise ServiceUnavailableError("Task queue is unavailable")
+
+
+async def _compensate_failed_start(
+    session: AsyncSession,
+    run_id: UUID,
+    project_id: UUID,
+    previous_status: ProjectStatus,
+) -> None:
+    await session.execute(delete(Run).where(Run.id == run_id))
+    project = await session.get(Project, project_id)
+    if project is not None:
+        project.status = previous_status
+    await session.commit()
 
 
 async def start_project(
     session: AsyncSession,
-    project: Project,
+    project_id: UUID,
     publisher: TaskEnqueuer | None,
 ) -> tuple[Run, list[Task], int]:
+    await _ensure_publisher_ready(publisher)
+
+    project = await session.scalar(
+        select(Project).where(Project.id == project_id).with_for_update()
+    )
+    if project is None:
+        raise NotFoundError("Project not found")
+
     items = (
         await session.scalars(
             select(ProjectItem)
@@ -114,6 +159,7 @@ async def start_project(
     ]
     session.add_all(tasks)
 
+    previous_status = project.status
     project.status = ProjectStatus.ACTIVE
 
     try:
@@ -130,9 +176,16 @@ async def start_project(
             except Exception:
                 log.exception("publish_failed", task_id=str(task.id), run_id=str(run.id))
                 published = False
-            if published:
-                task.enqueued_at = datetime.now(UTC)
-                enqueued += 1
+            if not published:
+                await _compensate_failed_start(
+                    session,
+                    run.id,
+                    project.id,
+                    previous_status,
+                )
+                raise ServiceUnavailableError("Failed to publish task to the queue")
+            task.enqueued_at = datetime.now(UTC)
+            enqueued += 1
         await session.commit()
 
     return run, tasks, enqueued
@@ -141,9 +194,15 @@ async def start_project(
 async def list_project_runs(
     session: AsyncSession,
     project_id: UUID,
+    limit: int = 100,
+    offset: int = 0,
 ) -> Sequence[Run]:
     result = await session.scalars(
-        select(Run).where(Run.project_id == project_id).order_by(Run.created_at.desc())
+        select(Run)
+        .where(Run.project_id == project_id)
+        .order_by(Run.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return result.all()
 
