@@ -11,7 +11,7 @@ from transcributed.api.app import app
 from transcributed.api.deps import get_publisher
 from transcributed.db import SessionLocal
 from transcributed.worker.main import TaskDisposition, TaskOutcome, process_task
-from transcributed.worker.transcriber import FakeTranscriber
+from transcributed.worker.transcriber import FakeTranscriber, PermanentTaskError
 
 
 class FakePublisher:
@@ -44,6 +44,17 @@ class AlwaysFailTranscriber:
         should_cancel: Any | None = None,
     ) -> dict[str, str]:
         raise RuntimeError("transcription failed")
+
+
+class PermanentlyBrokenTranscriber:
+    def transcribe(
+        self,
+        input_path: Path,
+        spec: dict[str, Any],
+        *,
+        should_cancel: Any | None = None,
+    ) -> dict[str, str]:
+        raise PermanentTaskError("worker image contains model 'small'")
 
 
 @contextmanager
@@ -288,3 +299,22 @@ def test_unknown_artifact_format_returns_404(
     assert _process(task_id).disposition == TaskDisposition.SUCCEEDED
 
     assert client.get(f"/api/v1/tasks/{task_id}/files/pdf").status_code == 404
+
+
+def test_permanent_failure_is_not_retried(
+    client: TestClient,
+    sample_video: str,
+) -> None:
+    project_id = _create_project(client)
+    _add_items(client, project_id, [sample_video])
+    start = client.post(f"/api/v1/projects/{project_id}/start")
+    task_id = start.json()["task_ids"][0]
+
+    outcome = _process(task_id, PermanentlyBrokenTranscriber())
+
+    assert outcome.disposition == TaskDisposition.FAILED
+    task = client.get(f"/api/v1/tasks/{task_id}").json()
+    assert task["status"] == "failed"
+    assert task["attempts"] == 1
+    assert "worker image contains model" in task["error"]
+    assert client.get(f"/api/v1/runs/{start.json()['run']['id']}").json()["status"] == "failed"

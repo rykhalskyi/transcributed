@@ -67,7 +67,7 @@ services:
       context: ./api
       target: worker
       args:
-        WHISPER_MODEL: small
+        WHISPER_MODEL: ${WHISPER_MODEL:-small}
     profiles: ["worker"]
     env_file:
       - ./api/.env

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     worker_backend: Literal["fake", "faster-whisper"] = "faster-whisper"
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
+    whisper_model: str | None = None
     whisper_model_dir: Path | None = None
     whisper_local_files_only: bool = False
     whisper_beam_size: int = 5

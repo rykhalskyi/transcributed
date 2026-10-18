@@ -18,6 +18,10 @@ class TaskCancelled(Exception):
     pass
 
 
+class PermanentTaskError(Exception):
+    pass
+
+
 class Transcriber(Protocol):
     def transcribe(
         self,
@@ -100,6 +104,7 @@ class FasterWhisperTranscriber:
         vad_filter: bool = True,
         ffmpeg_binary: str = "ffmpeg",
         local_files_only: bool = False,
+        baked_model: str | None = None,
     ) -> None:
         self.device = device
         self.compute_type = compute_type
@@ -108,6 +113,7 @@ class FasterWhisperTranscriber:
         self.vad_filter = vad_filter
         self.ffmpeg_binary = ffmpeg_binary
         self.local_files_only = local_files_only
+        self.baked_model = baked_model
 
     def _ffmpeg_command(self, input_path: Path) -> list[str]:
         return [
@@ -150,7 +156,9 @@ class FasterWhisperTranscriber:
         if not result.stdout:
             raise RuntimeError(f"ffmpeg produced no audio for {input_path.name}")
 
-        return np.frombuffer(result.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+        audio = np.frombuffer(result.stdout, dtype=np.int16).astype(np.float32)
+        audio /= 32768.0
+        return audio
 
     def _load_model(self, model_name: str) -> Any:
         key = (
@@ -191,6 +199,15 @@ class FasterWhisperTranscriber:
     ) -> dict[str, str]:
         started = time.monotonic()
         model_name = str(spec.get("model") or "small")
+        if (
+            self.local_files_only
+            and self.baked_model is not None
+            and model_name != self.baked_model
+        ):
+            raise PermanentTaskError(
+                f"worker image contains model '{self.baked_model}', "
+                f"but the task requests '{model_name}'"
+            )
         model = self._load_model(model_name)
         audio = self._decode_audio(input_path)
         duration_seconds = len(audio) / SAMPLE_RATE
@@ -201,12 +218,15 @@ class FasterWhisperTranscriber:
             decode_seconds=round(time.monotonic() - started, 1),
         )
 
-        segments_iter, _info = model.transcribe(
+        segments_iter, info = model.transcribe(
             audio,
             language=language_code(spec.get("language")),
             beam_size=self.beam_size,
-            vad_filter=bool(spec.get("vad_filter", self.vad_filter)),
+            vad_filter=self.vad_filter,
             word_timestamps=False,
+        )
+        detected_language = getattr(info, "language", None) or language_code(
+            spec.get("language")
         )
         segments: list[TranscriptSegment] = []
         next_cancel_check = 0.0
@@ -246,7 +266,7 @@ class FasterWhisperTranscriber:
         if "vtt" in formats:
             files["vtt"] = render_vtt(segments)
         if "json" in formats:
-            files["json"] = render_json(segments, spec.get("language"))
+            files["json"] = render_json(segments, detected_language)
         if "txt" in formats:
             files["txt"] = render_txt(segments)
         return files

@@ -36,6 +36,8 @@ FROM base AS worker
 
 ARG WHISPER_MODEL=small
 
+ENV WHISPER_MODEL=${WHISPER_MODEL}
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*

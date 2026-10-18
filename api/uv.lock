@@ -1372,12 +1372,14 @@ dependencies = [
 [package.optional-dependencies]
 worker = [
     { name = "faster-whisper" },
+    { name = "numpy" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
     { name = "mypy" },
+    { name = "numpy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -1389,6 +1391,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.0" },
     { name = "fastapi", specifier = ">=0.143.3" },
     { name = "faster-whisper", marker = "extra == 'worker'", specifier = ">=1.2.1" },
+    { name = "numpy", marker = "extra == 'worker'", specifier = ">=2.0" },
     { name = "prometheus-client", specifier = ">=0.26.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic-settings", specifier = ">=2.16.0" },
@@ -1402,6 +1405,7 @@ provides-extras = ["worker"]
 dev = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mypy", specifier = ">=2.4.0" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "ruff", specifier = ">=0.17.1" },

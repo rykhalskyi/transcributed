@@ -8,6 +8,7 @@ import pytest
 
 from transcributed.worker.transcriber import (
     FasterWhisperTranscriber,
+    PermanentTaskError,
     TaskCancelled,
     TranscriptSegment,
     language_code,
@@ -53,15 +54,16 @@ def test_render_json_has_segments_without_word_timestamps() -> None:
 
 
 class FakeModel:
-    def __init__(self) -> None:
+    def __init__(self, language: str | None = "ru") -> None:
         self.audio: Any = None
         self.kwargs: dict[str, Any] = {}
+        self.language = language
 
     def transcribe(self, audio: Any, **kwargs: Any) -> tuple[Iterator[Any], Any]:
         self.audio = audio
         self.kwargs = kwargs
         segments = [SimpleNamespace(start=0.0, end=1.25, text=" hello ")]
-        return iter(segments), SimpleNamespace()
+        return iter(segments), SimpleNamespace(language=self.language)
 
 
 def test_faster_whisper_transcriber_maps_spec_and_renders(
@@ -89,6 +91,7 @@ def test_faster_whisper_transcriber_maps_spec_and_renders(
     assert files["txt"] == "hello\n"
     assert files["vtt"].startswith("WEBVTT\n\n00:00:00.000 --> 00:00:01.250\nhello\n")
     assert json.loads(files["json"])["text"] == "hello"
+    assert json.loads(files["json"])["language"] == "ru"
 
 
 def test_faster_whisper_transcriber_writes_only_requested_formats(
@@ -105,6 +108,54 @@ def test_faster_whisper_transcriber_writes_only_requested_formats(
     )
 
     assert set(files) == {"vtt"}
+
+
+def test_faster_whisper_transcriber_falls_back_to_requested_language(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcriber = FasterWhisperTranscriber()
+    monkeypatch.setattr(transcriber, "_load_model", lambda _: FakeModel(language=None))
+    monkeypatch.setattr(transcriber, "_decode_audio", lambda _: [0.0])
+
+    files = transcriber.transcribe(
+        tmp_path / "lecture.mp4",
+        {"model": "small", "language": "en", "output_formats": ["json"]},
+    )
+
+    assert json.loads(files["json"])["language"] == "en"
+
+
+def test_faster_whisper_transcriber_uses_worker_vad_setting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = FakeModel()
+    transcriber = FasterWhisperTranscriber(vad_filter=False)
+    monkeypatch.setattr(transcriber, "_load_model", lambda _: model)
+    monkeypatch.setattr(transcriber, "_decode_audio", lambda _: [0.0])
+
+    transcriber.transcribe(
+        tmp_path / "lecture.mp4",
+        {"model": "small", "language": "en", "output_formats": ["txt"]},
+    )
+
+    assert model.kwargs["vad_filter"] is False
+
+
+def test_faster_whisper_transcriber_rejects_model_missing_from_image(
+    tmp_path: Path,
+) -> None:
+    transcriber = FasterWhisperTranscriber(
+        local_files_only=True,
+        baked_model="small",
+    )
+
+    with pytest.raises(PermanentTaskError, match="tiny"):
+        transcriber.transcribe(
+            tmp_path / "lecture.mp4",
+            {"model": "tiny", "language": "en"},
+        )
 
 
 def test_ffmpeg_command_requests_16k_mono_pcm(tmp_path: Path) -> None:

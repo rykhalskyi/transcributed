@@ -26,6 +26,7 @@ transcributed-worker = "transcributed.worker.main:main"
 [project.optional-dependencies]
 worker = [
     "faster-whisper>=1.2.1",
+    "numpy>=2.0",
 ]
 
 [build-system]
@@ -36,6 +37,7 @@ build-backend = "uv_build"
 dev = [
     "httpx>=0.28.1",
     "mypy>=2.4.0",
+    "numpy>=2.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.17.1",

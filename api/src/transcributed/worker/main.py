@@ -26,12 +26,15 @@ from transcributed.services.status import refresh_run_status
 from transcributed.worker.transcriber import (
     FakeTranscriber,
     FasterWhisperTranscriber,
+    PermanentTaskError,
     TaskCancelled,
     Transcriber,
 )
 
 settings = get_settings()
 log = structlog.get_logger(__name__)
+
+CANCEL_CHECK_CONNECT_TIMEOUT_SECONDS = 5
 
 CONTENT_TYPES = {
     "vtt": "text/vtt; charset=utf-8",
@@ -69,6 +72,7 @@ def create_transcriber() -> Transcriber:
             vad_filter=settings.whisper_vad_filter,
             ffmpeg_binary=settings.ffmpeg_binary,
             local_files_only=settings.whisper_local_files_only,
+            baked_model=settings.whisper_model,
         )
     raise ValueError(f"Unsupported worker backend: {settings.worker_backend}")
 
@@ -86,7 +90,11 @@ class CancellationCheck:
     def __call__(self) -> bool:
         try:
             if self._connection is None or self._connection.closed:
-                self._connection = psycopg.connect(self.dsn, autocommit=True)
+                self._connection = psycopg.connect(
+                    self.dsn,
+                    autocommit=True,
+                    connect_timeout=CANCEL_CHECK_CONNECT_TIMEOUT_SECONDS,
+                )
             row = self._connection.execute(
                 "SELECT status FROM tasks WHERE id = %s",
                 (self.task_id,),
@@ -97,13 +105,22 @@ class CancellationCheck:
                 task_id=str(self.task_id),
                 exc_info=True,
             )
+            self.close()
             return False
         return row is not None and row[0] == TaskStatus.CANCELLED.value
 
     def close(self) -> None:
-        if self._connection is not None:
-            self._connection.close()
-            self._connection = None
+        connection = self._connection
+        self._connection = None
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                log.warning(
+                    "cancel_check_close_failed",
+                    task_id=str(self.task_id),
+                    exc_info=True,
+                )
 
 
 
@@ -193,6 +210,16 @@ async def process_task(
             cancel_check.close()
         elapsed_seconds = round(time.monotonic() - started, 3)
 
+        worker_details: dict[str, Any] = {}
+        if isinstance(worker, FasterWhisperTranscriber):
+            worker_details = {
+                "device": worker.device,
+                "compute_type": worker.compute_type,
+                "beam_size": worker.beam_size,
+                "vad_filter": worker.vad_filter,
+                "local_files_only": worker.local_files_only,
+            }
+
         metadata = json.dumps(
             {
                 "task_id": str(task.id),
@@ -202,6 +229,7 @@ async def process_task(
                 "spec": task.spec,
                 "transcriber": type(worker).__name__,
                 "model": task.spec.get("model"),
+                "worker": worker_details,
                 "elapsed_seconds": elapsed_seconds,
                 "generated_at": datetime.now(UTC).isoformat(),
             },
@@ -309,7 +337,9 @@ async def process_task(
             return TaskOutcome(TaskDisposition.NOOP)
 
         task.error = str(exc)[:4000]
-        if task.attempts < task.max_attempts:
+        if isinstance(exc, PermanentTaskError):
+            log.error("task_permanent_failure", task_id=str(task_id), error=task.error)
+        if not isinstance(exc, PermanentTaskError) and task.attempts < task.max_attempts:
             task.status = TaskStatus.QUEUED
             task.finished_at = None
             await session.flush()
