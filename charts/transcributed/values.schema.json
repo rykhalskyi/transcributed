@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["config", "secrets", "api", "worker", "nas"],
+  "properties": {
+    "nameOverride": {"type": "string"},
+    "fullnameOverride": {"type": "string"},
+    "imagePullSecrets": {"type": "array"},
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "annotations": {"type": "object"}
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": ["workerBackend", "whisperModel"],
+      "properties": {
+        "logLevel": {"type": "string"},
+        "workerBackend": {"enum": ["fake", "faster-whisper"]},
+        "whisperDevice": {"type": "string"},
+        "whisperComputeType": {"type": "string"},
+        "whisperModel": {"type": "string"},
+        "whisperLocalFilesOnly": {"type": "boolean"},
+        "whisperBeamSize": {"type": "integer", "minimum": 1},
+        "whisperVadFilter": {"type": "boolean"},
+        "ffmpegBinary": {"type": "string"},
+        "rabbitmqEnabled": {"type": "boolean"},
+        "rabbitmqExchange": {"type": "string"},
+        "rabbitmqJobsQueue": {"type": "string"},
+        "rabbitmqConnectTimeoutSeconds": {"type": "number"}
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "required": ["create", "name"],
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "databaseUrl": {"type": "string"},
+        "rabbitmqUrl": {"type": "string"}
+      }
+    },
+    "database": {
+      "type": "object",
+      "properties": {"urlKey": {"type": "string"}}
+    },
+    "rabbitmq": {
+      "type": "object",
+      "properties": {"urlKey": {"type": "string"}}
+    },
+    "api": {
+      "type": "object",
+      "required": ["replicaCount", "image"],
+      "properties": {
+        "replicaCount": {"type": "integer", "minimum": 1},
+        "image": {"$ref": "#/definitions/image"},
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {"type": "string"},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+          }
+        },
+        "ingress": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "className": {"type": "string"},
+            "annotations": {"type": "object"},
+            "hosts": {"type": "array"},
+            "tls": {"type": "array"}
+          }
+        },
+        "resources": {"type": "object"},
+        "podAnnotations": {"type": "object"},
+        "podSecurityContext": {"type": "object"},
+        "securityContext": {"type": "object"},
+        "nodeSelector": {"type": "object"},
+        "tolerations": {"type": "array"},
+        "affinity": {"type": "object"}
+      }
+    },
+    "worker": {
+      "type": "object",
+      "required": ["image", "keda"],
+      "properties": {
+        "image": {"$ref": "#/definitions/image"},
+        "keda": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "maxReplicaCount": {"type": "integer", "minimum": 1},
+            "pollingInterval": {"type": "integer", "minimum": 1},
+            "cooldownPeriod": {"type": "integer", "minimum": 0},
+            "queueLength": {"type": "string"},
+            "successfulJobsHistoryLimit": {"type": "integer", "minimum": 0},
+            "failedJobsHistoryLimit": {"type": "integer", "minimum": 0},
+            "activeDeadlineSeconds": {"type": "integer", "minimum": 1},
+            "ttlSecondsAfterFinished": {"type": "integer", "minimum": 0},
+            "terminationGracePeriodSeconds": {"type": "integer", "minimum": 0},
+            "restartPolicy": {"enum": ["Never", "OnFailure"]},
+            "backoffLimit": {"type": "integer", "minimum": 0}
+          }
+        },
+        "resources": {"type": "object"},
+        "podSecurityContext": {"type": "object"},
+        "securityContext": {"type": "object"},
+        "nodeSelector": {"type": "object"},
+        "tolerations": {"type": "array"},
+        "affinity": {"type": "object"}
+      }
+    },
+    "migrations": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "backoffLimit": {"type": "integer", "minimum": 0},
+        "activeDeadlineSeconds": {"type": "integer", "minimum": 1},
+        "resources": {"type": "object"}
+      }
+    },
+    "nas": {
+      "type": "object",
+      "required": ["enabled", "mountPath", "create"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "mountPath": {"type": "string"},
+        "existingClaim": {"type": "string"},
+        "create": {"type": "boolean"},
+        "capacity": {"type": "string"},
+        "accessMode": {"type": "string"},
+        "storageClassName": {"type": "string"},
+        "server": {"type": "string"},
+        "share": {"type": "string"},
+        "mountOptions": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "definitions": {
+    "image": {
+      "type": "object",
+      "required": ["repository"],
+      "properties": {
+        "repository": {"type": "string"},
+        "tag": {"type": "string"},
+        "pullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]}
+      }
+    }
+  }
+}

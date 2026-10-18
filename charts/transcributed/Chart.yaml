@@ -1,0 +1,16 @@
+apiVersion: v2
+name: transcributed
+description: Lecture transcription control plane and Faster Whisper worker
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"
+keywords:
+  - transcription
+  - whisper
+  - fastapi
+home: https://github.com/rykhalskyi/transcributed
+sources:
+  - https://github.com/rykhalskyi/transcributed
+maintainers:
+  - name: Iaroslav Rykhalskyi

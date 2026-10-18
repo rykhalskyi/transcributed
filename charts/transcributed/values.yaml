@@ -1,0 +1,122 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+
+config:
+  logLevel: INFO
+  workerBackend: faster-whisper
+  whisperDevice: cpu
+  whisperComputeType: int8
+  whisperModel: small
+  whisperLocalFilesOnly: true
+  whisperBeamSize: 5
+  whisperVadFilter: true
+  ffmpegBinary: ffmpeg
+  rabbitmqEnabled: true
+  rabbitmqExchange: transcription
+  rabbitmqJobsQueue: transcription.jobs
+  rabbitmqConnectTimeoutSeconds: 5
+
+secrets:
+  # Preferred: create a Secret in the homelab repo and leave this false.
+  create: false
+  name: transcributed-secrets
+  databaseUrl: ""
+  rabbitmqUrl: ""
+
+database:
+  urlKey: DATABASE_URL
+
+rabbitmq:
+  urlKey: RABBITMQ_URL
+
+api:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rykhalskyi/transcributed-api
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+  ingress:
+    enabled: false
+    className: traefik
+    annotations: {}
+    hosts:
+      - host: transcributed.homelab.home.arpa
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+worker:
+  image:
+    repository: ghcr.io/rykhalskyi/transcributed-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  keda:
+    enabled: true
+    maxReplicaCount: 1
+    pollingInterval: 10
+    cooldownPeriod: 300
+    queueLength: "1"
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    activeDeadlineSeconds: 43200
+    ttlSecondsAfterFinished: 900
+    terminationGracePeriodSeconds: 120
+    restartPolicy: Never
+    backoffLimit: 0
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+migrations:
+  enabled: true
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  resources: {}
+
+nas:
+  enabled: false
+  mountPath: /nas/lectures
+  existingClaim: ""
+  create: false
+  capacity: 10Ti
+  accessMode: ReadOnlyMany
+  storageClassName: ""
+  server: ""
+  share: ""
+  mountOptions:
+    - nfsvers=4.1
+    - hard
+    - noatime

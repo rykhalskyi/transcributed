@@ -4,7 +4,7 @@
 
 ## Overview
 - [project-overview](pages/project-overview.md) — Project purpose, tech stack, folder layout, and key concepts.
-- [build-deploy](pages/build-deploy.md) — Build, test, lint, and deploy commands for the project.
+- [build-deploy](pages/build-deploy.md) — Build, test, lint, release images and the Helm chart, and deploy through the homelab repo.
 
 ## Specs
 - [specs/control-plane](pages/specs/control-plane.md) — Project/run/task control-plane model with explicit user-triggered ingestion.

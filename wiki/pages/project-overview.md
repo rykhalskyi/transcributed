@@ -31,6 +31,9 @@ through the API.
 ```
 .
 ├── api/                # FastAPI control plane, worker, migrations, tests
+├── charts/
+│   └── transcributed/  # Helm chart (API, KEDA ScaledJob, migration hook)
+├── .github/workflows/  # image and chart release pipelines
 ├── docker-compose.dev.yml
 ├── scripts/
 │   └── wiki.mjs        # wiki maintenance helper

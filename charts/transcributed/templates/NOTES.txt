@@ -1,0 +1,20 @@
+Release {{ .Release.Name }} is installed in namespace {{ .Release.Namespace }}.
+
+Secret contract:
+  - Secret {{ .Values.secrets.name }} must exist with keys
+    {{ .Values.database.urlKey }} and {{ .Values.rabbitmq.urlKey }}
+    unless secrets.create=true.
+
+API:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "transcributed.fullname" . }}-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }}
+
+Worker:
+  KEDA ScaledJob {{ include "transcributed.fullname" . }}-worker scales on
+  RabbitMQ queue {{ .Values.config.rabbitmqJobsQueue }} ({{ .Values.worker.keda.queueLength }}).
+
+NAS:
+{{- if .Values.nas.enabled }}
+  Mounted at {{ .Values.nas.mountPath }} from claim {{ include "transcributed.nasClaimName" . }}.
+{{- else }}
+  Disabled. Set nas.enabled=true and provide existingClaim or create=true with server/share.
+{{- end }}

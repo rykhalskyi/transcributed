@@ -1,0 +1,15 @@
+secrets:
+  create: true
+  name: transcributed-ci-secrets
+  databaseUrl: postgresql+psycopg://transcributed:transcributed@postgres:5432/transcributed
+  rabbitmqUrl: amqp://transcributed:transcributed@rabbitmq:5672/
+
+nas:
+  enabled: true
+  create: true
+  server: nfs.example.internal
+  share: /volume1/lectures
+
+api:
+  ingress:
+    enabled: true

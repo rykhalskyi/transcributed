@@ -1,0 +1,14 @@
+{{- if .Values.worker.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "transcributed.fullname" . }}-rabbitmq
+  labels:
+    {{- include "transcributed.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: {{ .Values.secrets.name }}
+      key: {{ .Values.rabbitmq.urlKey }}
+{{- end }}
