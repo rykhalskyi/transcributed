@@ -15,8 +15,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            python3 scripts/version.py check --tag "${GITHUB_REF_NAME}"
+          else
+            python3 scripts/version.py check
+          fi
+
   images:
     name: ${{ matrix.image }}
+    needs: version
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

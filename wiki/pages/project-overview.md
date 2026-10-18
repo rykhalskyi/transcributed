@@ -30,12 +30,14 @@ through the API.
 
 ```
 .
+├── VERSION             # single version source for release/CI checks
 ├── api/                # FastAPI control plane, worker, migrations, tests
 ├── charts/
 │   └── transcributed/  # Helm chart (API, KEDA ScaledJob, migration hook)
 ├── .github/workflows/  # image and chart release pipelines
 ├── docker-compose.dev.yml
 ├── scripts/
+│   ├── version.py      # bump/check every version field
 │   └── wiki.mjs        # wiki maintenance helper
 └── wiki/               # this knowledge base
     ├── AGENTS.md

@@ -24,6 +24,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Check version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            python3 scripts/version.py check --tag "${GITHUB_REF_NAME}"
+          else
+            python3 scripts/version.py check
+          fi
+
       - uses: azure/setup-helm@v4
         with:
           version: latest

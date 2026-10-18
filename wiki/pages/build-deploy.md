@@ -33,18 +33,68 @@ docker compose -f docker-compose.dev.yml --profile worker run --rm worker
 
 ## Release
 
-Pushing a `v*` tag runs `.github/workflows/images.yml` and
-`.github/workflows/chart.yml`:
+`VERSION` is the single source of truth for the project version. CI checks it
+against the git tag, `Chart.yaml` (`version` and `appVersion`),
+`api/pyproject.toml`, `api/uv.lock`, and the app metadata. Any mismatch fails the
+run before an image is built.
 
-- build and push `ghcr.io/rykhalskyi/transcributed-api` and
+### Build on GitHub (normal release)
+
+1. Bump every version field:
+   ```bash
+   ./scripts/version.py bump X.Y.Z
+   ./scripts/version.py check
+   ```
+2. Commit and push the bump to the branch/PR:
+   ```bash
+   git add VERSION api charts
+   git commit -m "Release vX.Y.Z"
+   git push
+   ```
+3. Tag the merged commit and push the tag:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+4. Watch the runs:
+   ```bash
+   gh run list --limit 5
+   gh run watch
+   ```
+   Or open `Actions` in GitHub and watch **Build and push images** and
+   **Lint and publish chart**.
+
+The tag triggers:
+
+- `.github/workflows/images.yml` — version check, then builds and pushes
+  `ghcr.io/rykhalskyi/transcributed-api` and
   `ghcr.io/rykhalskyi/transcributed-worker`, tagged `vX.Y.Z` and
-  `sha-<full-commit>`;
-- package the chart and push `transcributed-<version>.tgz` to
+  `sha-<full-commit>`.
+- `.github/workflows/chart.yml` — version check, lint/template/kubeconform, then
+  packages and pushes `transcributed-X.Y.Z.tgz` to
   `oci://ghcr.io/rykhalskyi/charts`.
 
-The worker build uses `WHISPER_MODEL=small`. Keep `config.whisperModel` in the
+The worker build uses `WHISPER_MODEL=small` and downloads the model during the
+build, so it takes longer than the API image. Keep `config.whisperModel` in the
 chart values in sync with that build arg; a task requesting another model fails
 permanently instead of retrying.
+
+### Build manually
+
+To build without publishing a release tag, run **Build and push images** from the
+Actions tab (`workflow_dispatch`) or:
+
+```bash
+gh workflow run images.yml
+gh run watch
+```
+
+Manual runs push only `sha-<full-commit>` tags, because there is no `v*` tag.
+The chart workflow's manual run only lints and templates; it publishes only on a
+`v*` tag.
+
+Make the GHCR packages public, or create an image pull secret in `homelab` and
+pass it as `imagePullSecrets`.
 
 Chart validation runs on pull requests that touch `charts/` or the chart workflow:
 `helm lint`, `helm template`, and kubeconform (KEDA CRDs are skipped).

@@ -79,6 +79,18 @@ the PV can bind.
 
 ## Images and chart releases
 
+`VERSION` is the single source of truth. CI checks it against the git tag,
+`chart.version`, `chart.appVersion`, `api/pyproject.toml`, `uv.lock`, and the app
+metadata, and fails the run on any mismatch.
+
+```bash
+./scripts/version.py bump X.Y.Z
+git add VERSION api charts
+git commit -m "Release vX.Y.Z"
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
 - `.github/workflows/images.yml` builds and pushes both images on `v*` tags and
   on manual dispatch. Tags are `vX.Y.Z` and `sha-<full-commit>`.
 - `.github/workflows/chart.yml` lints and templates the chart on pull requests and
@@ -97,5 +109,5 @@ spec:
   interval: 1h
   url: oci://ghcr.io/rykhalskyi/charts/transcributed
   ref:
-    tag: 0.1.0
+    tag: X.Y.Z
 ```
