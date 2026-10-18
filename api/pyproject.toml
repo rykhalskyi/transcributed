@@ -1,0 +1,64 @@
+[project]
+name = "transcributed"
+version = "0.1.0"
+description = "Self-hosted lecture transcription control plane"
+readme = "README.md"
+authors = [
+    { name = "Iaroslav Rykhalskyi", email = "rikhalskiy@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "aio-pika>=10.1.1",
+    "alembic>=1.20.0",
+    "fastapi>=0.143.3",
+    "prometheus-client>=0.26.0",
+    "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.16.0",
+    "sqlalchemy[asyncio]>=2.1.5",
+    "structlog>=26.1.0",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+transcributed = "transcributed:main"
+transcributed-worker = "transcributed.worker.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["transcributed"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/versions/*" = ["E501", "I001", "UP007", "UP035"]
+
+[tool.mypy]
+python_version = "3.14"
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

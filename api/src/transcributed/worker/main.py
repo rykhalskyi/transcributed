@@ -1,0 +1,314 @@
+import asyncio
+import json
+import sys
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
+from uuid import UUID
+
+import aio_pika
+import structlog
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from transcributed.config import get_settings
+from transcributed.db import SessionLocal, engine
+from transcributed.enums import TaskStatus
+from transcributed.logging import configure_logging
+from transcributed.messaging.topology import declare_topology, retry_routing_key
+from transcributed.models import Artifact, ProjectItem, Task
+from transcributed.services.spec import resolve_input_path
+from transcributed.services.status import refresh_run_status
+from transcributed.worker.transcriber import FakeTranscriber, Transcriber
+
+settings = get_settings()
+log = structlog.get_logger(__name__)
+
+CONTENT_TYPES = {
+    "vtt": "text/vtt; charset=utf-8",
+    "json": "application/json",
+    "txt": "text/plain; charset=utf-8",
+}
+
+
+class TaskDisposition(StrEnum):
+    SUCCEEDED = "succeeded"
+    RETRY = "retry"
+    FAILED = "failed"
+    NOOP = "noop"
+
+
+@dataclass(frozen=True)
+class TaskOutcome:
+    disposition: TaskDisposition
+    task_id: UUID | None = None
+    run_id: UUID | None = None
+    attempts: int = 0
+    retry_routing_key: str | None = None
+
+
+async def load_task(session: AsyncSession, task_id: UUID) -> Task | None:
+    return await session.scalar(
+        select(Task)
+        .where(Task.id == task_id)
+        .options(
+            selectinload(Task.project_item).selectinload(ProjectItem.video),
+            selectinload(Task.run),
+            selectinload(Task.artifacts),
+        )
+    )
+
+
+async def process_task(
+    session: AsyncSession,
+    task_id: UUID,
+    transcriber: Transcriber | None = None,
+) -> TaskOutcome:
+    task = await load_task(session, task_id)
+    if task is None:
+        log.warning("task_not_found", task_id=str(task_id))
+        return TaskOutcome(TaskDisposition.NOOP)
+
+    if task.status in (TaskStatus.SUCCEEDED, TaskStatus.FAILED):
+        log.info("task_already_terminal", task_id=str(task_id), status=task.status)
+        return TaskOutcome(TaskDisposition.NOOP)
+
+    if task.attempts >= task.max_attempts:
+        task.status = TaskStatus.FAILED
+        task.error = "max attempts exceeded"
+        task.finished_at = datetime.now(UTC)
+        await session.flush()
+        await refresh_run_status(session, task.run_id)
+        await session.commit()
+        log.error("task_max_attempts", task_id=str(task_id))
+        return TaskOutcome(
+            TaskDisposition.FAILED,
+            task_id=task.id,
+            run_id=task.run_id,
+            attempts=task.attempts,
+        )
+
+    now = datetime.now(UTC)
+    task.status = TaskStatus.PROCESSING
+    task.attempts += 1
+    task.started_at = now
+    task.finished_at = None
+    task.error = None
+    await session.flush()
+    await refresh_run_status(session, task.run_id)
+    await session.commit()
+
+    log.info(
+        "task_started",
+        task_id=str(task.id),
+        run_id=str(task.run_id),
+        attempt=task.attempts,
+        path=task.project_item.video.path,
+    )
+
+    try:
+        resolved = resolve_input_path(
+            task.project_item.video.path,
+            settings.nas_input_root,
+            settings.allowed_extensions,
+        )
+
+        worker = transcriber or FakeTranscriber()
+        files = worker.transcribe(resolved.absolute_path, task.spec)
+
+        metadata = json.dumps(
+            {
+                "task_id": str(task.id),
+                "run_id": str(task.run_id),
+                "project_id": str(task.run.project_id),
+                "source_path": task.project_item.video.path,
+                "spec": task.spec,
+                "transcriber": "fake",
+                "generated_at": datetime.now(UTC).isoformat(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+        await session.execute(delete(Artifact).where(Artifact.task_id == task.id))
+        artifacts = [
+            Artifact(
+                task_id=task.id,
+                format=file_format,
+                filename=f"transcript.{file_format}",
+                content_type=CONTENT_TYPES[file_format],
+                content=content,
+                size_bytes=len(content.encode("utf-8")),
+            )
+            for file_format, content in files.items()
+        ]
+        artifacts.append(
+            Artifact(
+                task_id=task.id,
+                format="metadata",
+                filename="metadata.json",
+                content_type="application/json",
+                content=metadata,
+                size_bytes=len(metadata.encode("utf-8")),
+            )
+        )
+        session.add_all(artifacts)
+
+        task.status = TaskStatus.SUCCEEDED
+        task.finished_at = datetime.now(UTC)
+        task.error = None
+        await session.flush()
+        await refresh_run_status(session, task.run_id)
+        await session.commit()
+
+        log.info("task_succeeded", task_id=str(task.id), run_id=str(task.run_id))
+        return TaskOutcome(
+            TaskDisposition.SUCCEEDED,
+            task_id=task.id,
+            run_id=task.run_id,
+            attempts=task.attempts,
+        )
+    except Exception as exc:
+        await session.rollback()
+        log.exception("task_failed", task_id=str(task_id), run_id=str(task.run_id))
+        task = await session.get(Task, task_id)
+        if task is None:
+            return TaskOutcome(TaskDisposition.NOOP)
+        if task.status == TaskStatus.SUCCEEDED:
+            return TaskOutcome(TaskDisposition.NOOP)
+
+        task.error = str(exc)[:4000]
+        if task.attempts < task.max_attempts:
+            task.status = TaskStatus.QUEUED
+            task.finished_at = None
+            await session.flush()
+            await refresh_run_status(session, task.run_id)
+            await session.commit()
+            return TaskOutcome(
+                TaskDisposition.RETRY,
+                task_id=task.id,
+                run_id=task.run_id,
+                attempts=task.attempts,
+                retry_routing_key=retry_routing_key(task.attempts),
+            )
+
+        task.status = TaskStatus.FAILED
+        task.finished_at = datetime.now(UTC)
+        await session.flush()
+        await refresh_run_status(session, task.run_id)
+        await session.commit()
+        return TaskOutcome(
+            TaskDisposition.FAILED,
+            task_id=task.id,
+            run_id=task.run_id,
+            attempts=task.attempts,
+        )
+
+
+async def _mark_enqueued(task_id: UUID) -> None:
+    async with SessionLocal() as session:
+        task = await session.get(Task, task_id)
+        if task is not None:
+            task.enqueued_at = datetime.now(UTC)
+            await session.commit()
+
+
+async def _mark_retry_publish_failed(task_id: UUID) -> None:
+    async with SessionLocal() as session:
+        task = await session.get(Task, task_id)
+        if task is None or task.status == TaskStatus.SUCCEEDED:
+            return
+        task.status = TaskStatus.FAILED
+        task.error = "failed to publish retry message"
+        task.finished_at = datetime.now(UTC)
+        await session.flush()
+        await refresh_run_status(session, task.run_id)
+        await session.commit()
+
+
+def _task_message(task_id: UUID, run_id: UUID) -> aio_pika.Message:
+    body = json.dumps(
+        {"v": 1, "task_id": str(task_id), "run_id": str(run_id)},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return aio_pika.Message(
+        body=body,
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+        content_type="application/json",
+        message_id=str(task_id),
+    )
+
+
+async def run_once() -> int:
+    configure_logging(settings.log_level)
+    if not settings.rabbitmq_enabled:
+        log.warning("worker_rabbitmq_disabled")
+        return 0
+
+    connection = await aio_pika.connect_robust(settings.rabbitmq_url)
+    async with connection:
+        channel = await connection.channel(publisher_confirms=True)
+        await channel.set_qos(prefetch_count=1)
+        topology = await declare_topology(
+            channel,
+            settings.rabbitmq_exchange,
+            settings.rabbitmq_jobs_queue,
+        )
+        message = await topology.jobs_queue.get(no_ack=False, fail=False)
+        if message is None:
+            log.info("worker_no_task_available")
+            await engine.dispose()
+            return 0
+
+        try:
+            payload = json.loads(message.body)
+            task_id = UUID(payload["task_id"])
+            run_id = UUID(payload["run_id"])
+        except Exception:
+            log.exception("worker_invalid_message")
+            await message.reject(requeue=False)
+            await engine.dispose()
+            return 0
+
+        try:
+            async with SessionLocal() as session:
+                outcome = await process_task(session, task_id)
+        except Exception:
+            log.exception("worker_unhandled_error", task_id=str(task_id))
+            await message.reject(requeue=False)
+            raise
+
+        if outcome.disposition == TaskDisposition.RETRY:
+            routing_key = outcome.retry_routing_key or retry_routing_key(outcome.attempts)
+            try:
+                await topology.exchange.publish(
+                    _task_message(task_id, outcome.run_id or run_id),
+                    routing_key=routing_key,
+                )
+            except Exception:
+                log.exception("retry_publish_failed", task_id=str(task_id))
+                await _mark_retry_publish_failed(task_id)
+                await message.reject(requeue=False)
+                await engine.dispose()
+                return 1
+            await _mark_enqueued(task_id)
+            await message.ack()
+        elif outcome.disposition == TaskDisposition.FAILED:
+            await message.reject(requeue=False)
+        else:
+            await message.ack()
+
+    await engine.dispose()
+    return 0
+
+
+def main() -> None:
+    try:
+        raise SystemExit(asyncio.run(run_once()))
+    except SystemExit:
+        raise
+    except Exception:
+        configure_logging(settings.log_level)
+        log.exception("worker_crashed")
+        sys.exit(1)
