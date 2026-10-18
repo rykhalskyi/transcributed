@@ -9,3 +9,4 @@ Append-only decision record. The "why" lives here; the full change history lives
 - [2026-10-17] D-05 — Make video submission metadata-only by accepting a NAS-relative path; never upload video bytes through the API — because the NAS remains the media source of truth
 - [2026-10-17] D-06 — Create a Run snapshot on every explicit project start — because re-runs with different settings must not overwrite prior results
 - [2026-10-17] D-07 — Store transcript files on the NAS and index them in PostgreSQL as Artifact records — because transcripts are large while status and paths must remain queryable
+- [2026-10-18] D-08 — Store transcript artifacts as text in PostgreSQL and serve downloads through the API; keep the NAS input read-only — because plain-text transcripts are small, DB writes are transactional, no output RWX mount is needed, and D-07's NAS output is no longer required

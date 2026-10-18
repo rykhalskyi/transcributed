@@ -22,7 +22,7 @@ Project ("Lectures set 1")     saved list, defaults, results
   └─ ProjectItem               one explicitly selected NAS file
 Run                            one explicit Start action
   └─ Task                      one video → one queue message → one Job
-       └─ Artifact             VTT / JSON / TXT / metadata on NAS
+       └─ Artifact             TXT / metadata in PostgreSQL
 ```
 
 - **Project** is the durable user-facing container: name, default processing
@@ -32,8 +32,8 @@ Run                            one explicit Start action
 - **Run** is one execution of the project. Starting again creates a new run, so old
   settings and outputs remain intact.
 - **Task** is one lecture, one RabbitMQ message, and one Kubernetes Job.
-- **Artifact** is a transcript file on the NAS; PostgreSQL indexes its path and
-  metadata.
+- **Artifact** is a transcript stored as text in PostgreSQL and downloaded through
+  the API.
 
 ## Decisions
 
@@ -44,7 +44,8 @@ Run                            one explicit Start action
 - Video submission is metadata-only: the API accepts a NAS-relative path and never
   uploads media bytes (D-05).
 - Each Start creates a run snapshot; re-runs create new runs (D-06).
-- Transcript files live on the NAS; PostgreSQL stores artifact paths and status (D-07).
+- Transcript artifacts are stored as text in PostgreSQL and downloaded through the API;
+  the NAS is read-only input (D-08, supersedes D-07).
 
 ## Data model
 
@@ -55,13 +56,14 @@ Run                            one explicit Start action
 | `project_items` | selected lectures | `project_id`, `video_id`, `position`, `spec_overrides` |
 | `runs` | explicit executions of a project | `project_id`, `status`, `spec` |
 | `tasks` | one lecture per worker Job | `run_id`, `project_item_id`, `status`, `spec`, `attempts` |
-| `artifacts` | transcript outputs | `task_id`, `format`, `path` |
+| `artifacts` | transcript outputs | `task_id`, `format`, `filename`, `content_type`, `content` |
 
 Key constraints:
 
 - `videos (path, size_bytes, mtime)` is unique; a changed file is a new version.
 - `project_items (project_id, video_id)` is unique.
 - `tasks (run_id, project_item_id)` is unique.
+- `artifacts (task_id, format)` is unique.
 - At most one active run per project.
 - Tasks record `enqueued_at`, so the control plane can republish tasks whose message
   publish was not confirmed.
@@ -107,19 +109,33 @@ A queue message contains only the task identity, for example:
 The worker loads the effective spec from PostgreSQL. The project list is never
 published as a single message.
 
+## NAS access
+
+The NAS is mounted read-only into the API and worker pods through a CSI driver
+(`csi-driver-nfs` on Talos; SMB CSI only if the NAS has no NFS export). Use a static
+PV/PVC with `ReadOnlyMany`, NFSv4.1, `hard`, `noatime`, and restrict the export to
+cluster node IPs. No workload writes to the NAS; transcripts live in PostgreSQL.
+
 ## Results
 
-- Transcript bytes stay on the NAS, for example
-  `<output_root>/<project_id>/<item_id>/<run_id>/transcript.vtt`.
-- The task inserts `artifacts` rows in the same transaction that marks it succeeded.
+- Transcript bytes are stored in `artifacts.content` (UTF-8 text) and indexed by
+  `(task_id, format)`.
+- The task inserts artifact rows in the same transaction that marks it succeeded, so
+  there are no orphaned partial outputs.
+- `GET /api/v1/tasks/{id}/files/{format}` returns the text as an attachment with the
+  stored filename and content type.
+- The default output is plain `txt`; VTT and segment-level JSON remain supported but
+  are optional and must not include word-level timestamps.
 - The project view aggregates the latest run: item status, language, duration, and
-  links to the artifacts.
+  download links.
 
 ## Non-goals for this slice
 
 - NAS scanning, filesystem watchers, automatic discovery, or automatic starts.
 - Video uploads through the API.
 - Chunking a lecture into segments or assembling partial transcripts.
+- Word-level timestamp JSON; the first slice produces plain text.
+- NAS output volumes or transcript files on the NAS.
 - Faster Whisper integration; this slice uses a fake worker.
 - KEDA, UI, authentication, and multi-user authorization.
 
