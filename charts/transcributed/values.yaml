@@ -89,6 +89,7 @@ worker:
     terminationGracePeriodSeconds: 120
     restartPolicy: Never
     backoffLimit: 0
+  # Sized for multi-hour lectures: a 2h05m file exceeded the previous 4Gi limit.
   resources:
     requests:
       cpu: "1"
