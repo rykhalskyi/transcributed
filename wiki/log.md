@@ -13,3 +13,5 @@
 ## [2026-10-18] update | worker-slice plan — measured medium memory (~1.7 GiB)
 ## [2026-10-18] update | build-deploy — Helm chart, GHCR releases, secrets contract, and homelab ownership
 ## [2026-10-18] update | VERSION single source, version bump/check script, and GitHub image/chart build instructions
+## [2026-10-20] update | Add Talos deployment architecture and transcription runbook
+## [2026-10-20] update | build-deploy — reflect live NAS mount and 2-worker KEDA config
