@@ -55,6 +55,7 @@ migration to roll the release back.
 | `worker.image.tag` | chart `appVersion` | Pin a `sha-<commit>` tag |
 | `config.whisperModel` | `small` | Model baked into the worker image |
 | `worker.keda.maxReplicaCount` | `1` | Max concurrent Jobs |
+| `worker.resources` | `1 CPU`/`4Gi` request, `4 CPU`/`12Gi` limit | Worker Pod sizing for multi-hour lectures |
 | `config.rabbitmqJobsQueue` | `transcription.jobs` | KEDA RabbitMQ queue |
 | `nas.enabled` | `false` | Mount the input share |
 | `nas.existingClaim` | `""` | Use an existing PVC |
