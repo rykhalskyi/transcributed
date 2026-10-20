@@ -2,8 +2,8 @@ apiVersion: v2
 name: transcributed
 description: Lecture transcription control plane and Faster Whisper worker
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.2.1
+appVersion: "0.2.1"
 kubeVersion: ">=1.30.0-0"
 keywords:
   - transcription

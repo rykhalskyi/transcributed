@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Transcributed API",
-        version="0.2.0",
+        version="0.2.1",
         lifespan=lifespan,
     )
     app.add_middleware(
