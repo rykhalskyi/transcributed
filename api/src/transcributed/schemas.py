@@ -84,6 +84,17 @@ class ProjectItemsAddResponse(BaseModel):
     results: list[ProjectItemResult]
 
 
+class ArtifactRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    format: str
+    filename: str
+    content_type: str
+    size_bytes: int | None
+    created_at: datetime
+
+
 class ProjectItemRead(BaseModel):
     id: UUID
     project_id: UUID
@@ -94,17 +105,8 @@ class ProjectItemRead(BaseModel):
     spec_overrides: dict[str, Any] | None
     latest_task_status: TaskStatus | None = None
     latest_task_id: UUID | None = None
-
-
-class ArtifactRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    format: str
-    filename: str
-    content_type: str
-    size_bytes: int | None
-    created_at: datetime
+    latest_task_progress: int | None = None
+    latest_task_artifacts: list[ArtifactRead] = Field(default_factory=list)
 
 
 class TaskRead(BaseModel):
@@ -122,6 +124,9 @@ class TaskRead(BaseModel):
     enqueued_at: datetime | None
     started_at: datetime | None
     finished_at: datetime | None
+    worker_pod: str | None = None
+    worker_node: str | None = None
+    progress: int = 0
     error: str | None
     created_at: datetime
     updated_at: datetime
@@ -150,6 +155,47 @@ class StartProjectResponse(BaseModel):
     task_ids: list[UUID]
     enqueued: int
     not_enqueued: int
+
+
+class NasDirectory(BaseModel):
+    name: str
+    path: str
+
+
+class NasFile(BaseModel):
+    name: str
+    path: str
+    size_bytes: int
+    mtime: datetime
+
+
+class NasListing(BaseModel):
+    path: str
+    parent: str | None
+    directories: list[NasDirectory]
+    files: list[NasFile]
+    truncated: bool = False
+
+
+class WorkerRead(BaseModel):
+    task_id: UUID
+    run_id: UUID
+    project_id: UUID
+    project_name: str
+    path: str
+    status: TaskStatus
+    node: str | None
+    pod: str | None
+    started_at: datetime | None
+    attempts: int
+    max_attempts: int
+    progress: int = 0
+
+
+class WorkersResponse(BaseModel):
+    active: int
+    queued: int
+    workers: list[WorkerRead]
 
 
 class HealthResponse(BaseModel):

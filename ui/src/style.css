@@ -1,0 +1,105 @@
+@import "@fontsource-variable/manrope";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-navy: #1e0a4e;
+  --color-brand-purple: #6a1fd0;
+  --color-brand-purple-soft: #f3eeff;
+  --color-brand-orange: #f5a300;
+  --color-brand-gold: #a87500;
+
+  --color-surface: #ffffff;
+  --color-surface-muted: #fafafc;
+  --color-border: #e8e4f1;
+  --color-text-muted: #6b6480;
+
+  --color-success: #1b7f4b;
+  --color-success-soft: #eaf7f0;
+  --color-danger: #b42318;
+  --color-danger-soft: #feeceb;
+  --color-warning: #b37700;
+  --color-warning-soft: #fff6e0;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-white font-sans text-brand-navy antialiased;
+  }
+
+  ::selection {
+    background: var(--color-brand-purple-soft);
+    color: var(--color-brand-navy);
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-white shadow-[0_1px_2px_rgba(30,10,78,0.04)];
+  }
+
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple/30 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-brand-purple text-white hover:bg-[#5a18b5];
+  }
+
+  .btn-secondary {
+    @apply border border-border bg-white text-brand-navy hover:border-brand-purple/40 hover:bg-brand-purple-soft;
+  }
+
+  .btn-danger {
+    @apply border border-danger/20 bg-danger-soft text-danger hover:bg-[#fdd9d6];
+  }
+
+  .btn-ghost {
+    @apply text-brand-navy hover:bg-brand-purple-soft;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-brand-navy outline-none transition placeholder:text-text-muted focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/15;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted;
+  }
+
+  .spinner {
+    @apply inline-block h-4 w-4 animate-spin rounded-full border-2 border-brand-purple/25 border-t-brand-purple;
+  }
+
+  .spinner-light {
+    @apply inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white;
+  }
+
+  .table-wrap {
+    @apply overflow-x-auto rounded-xl border border-border bg-white;
+  }
+
+  .data-table {
+    @apply min-w-full text-left text-sm;
+  }
+
+  .data-table th {
+    @apply border-b border-border bg-surface-muted px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-muted;
+  }
+
+  .data-table td {
+    @apply border-b border-border/70 px-4 py-3 align-middle last:border-b-0;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-[#faf8ff];
+  }
+}

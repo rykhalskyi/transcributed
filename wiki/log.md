@@ -15,3 +15,6 @@
 ## [2026-10-18] update | VERSION single source, version bump/check script, and GitHub image/chart build instructions
 ## [2026-10-20] update | Add Talos deployment architecture and transcription runbook
 ## [2026-10-20] update | build-deploy — reflect live NAS mount and 2-worker KEDA config
+## [2026-10-20] plan | UI slice: Vue 3 white UI, NAS browser, worker telemetry, and transcript downloads
+## [2026-10-20] update | UI slice — Vue scaffold, smoke test, and backend UI APIs (NAS browse, workers, item artifacts, CORS)
+## [2026-10-20] update | UI slice — per-task progress API, worker reporting, progress bars, and explicit transcript download buttons

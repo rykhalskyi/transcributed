@@ -172,14 +172,14 @@ Run detail includes every task and its artifacts:
 
 ```bash
 curl -sS $RESOLVE "$BASE/api/v1/runs/$RUN_ID" \
-  | jq '{status, tasks: [.tasks[] | {id, status, attempts, error}]}'
+  | jq '{status, tasks: [.tasks[] | {id, status, progress, attempts, error}]}'
 ```
 
 Single task:
 
 ```bash
 curl -sS $RESOLVE "$BASE/api/v1/tasks/$TASK_ID" \
-  | jq '{status, attempts, error, artifacts}'
+  | jq '{status, progress, attempts, error, artifacts}'
 ```
 
 The KEDA side:
@@ -192,8 +192,9 @@ kubectl -n transcributed logs -l app.kubernetes.io/component=worker --tail=100 -
 
 KEDA polls the queue every 10s. A new task normally produces a
 `transcributed-worker-*` Job within one polling interval; the first run also
-waits for the worker image pull. Workers log progress once per minute. Up to two
-Jobs run concurrently.
+waits for the worker image pull. `progress` is a 0–100 percentage updated while
+audio is transcribed, and reaches `100` on success. Up to two Jobs run
+concurrently.
 
 ### 5. Download the transcript
 
@@ -299,12 +300,13 @@ sequenceDiagram
 - **Outputs:** `txt`, `vtt`, `json` (default `txt`).
 - **Retries:** up to `max_attempts` (1-10, default 3), via the 1m and 10m retry
   queues. Permanent errors (for example an unavailable model) do not retry.
-- **Concurrency:** KEDA creates one worker Job per queued task, maximum two at a
-  time. More tasks wait in `transcription.jobs`.
+- **Concurrency:** KEDA creates one worker Job per queued task, one at a time.
+  More tasks wait in `transcription.jobs`.
 - **Runtime:** a Job has a 12-hour deadline (`activeDeadlineSeconds: 43200`) and
   is retained for 15 minutes after it finishes.
-- **Resources:** each worker requests `1 CPU`/`2Gi`, with limits of `4 CPU`/`4Gi`.
-  Transcription runs on CPU with `int8`; large recordings can take a long time.
+- **Resources:** each worker requests `1 CPU`/`4Gi`, with limits of `4 CPU`/`12Gi`.
+  The 12Gi limit is sized for multi-hour lectures; transcription runs on CPU with
+  `int8` and large recordings can still take a long time.
 - **Input changes:** the NAS file's size and mtime are recorded when the item is
   added. If the file changes, `/start` rejects it as "Source file changed since
   it was added"; remove and re-add the item.

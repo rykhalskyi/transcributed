@@ -61,7 +61,7 @@ flowchart LR
 2. Starting a project publishes one task per included item to the
    `transcription` exchange / `transcription.jobs` queue.
 3. KEDA watches the queue; one queued message above `queueLength: 1` creates a
-   worker Job (up to `maxReplicaCount: 2`).
+   worker Job (currently `maxReplicaCount: 1`).
 4. The worker consumes the task, mounts the NAS read-only at `/nas/lectures`,
    runs `ffmpeg` + Faster-Whisper on CPU, and writes artifacts/status to
    PostgreSQL.
@@ -205,10 +205,11 @@ match.
   until authentication and multi-user authorization exist.
 - **Model limit.** The worker image bakes only the `small` model with
   `WHISPER_LOCAL_FILES_ONLY=true`; requesting another model fails permanently.
-- **Concurrency.** KEDA creates one Job per queued task (`queueLength: 1`), up
-  to two. Each worker requests `1 CPU`/`2Gi` and may burst to `4 CPU`/`4Gi`;
-  Jobs run with `activeDeadlineSeconds: 43200` (12h) and are retained for 15m
-  after finishing.
+- **Concurrency.** KEDA creates one Job per queued task (`queueLength: 1`), one
+  at a time. Each worker requests `1 CPU`/`4Gi` and may burst to `4 CPU`/`12Gi`;
+  the 12Gi limit is sized for multi-hour lectures, which exceeded the previous
+  4Gi limit. Jobs run with `activeDeadlineSeconds: 43200` (12h) and are retained
+  for 15m after finishing.
 - **Backups.** CNPG keeps continuous WAL plus a daily base backup at 03:30 with
   30-day retention. The NAS input is not backed up by the cluster.
 

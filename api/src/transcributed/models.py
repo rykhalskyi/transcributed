@@ -248,6 +248,14 @@ class Task(Base, TimestampMixin):
     enqueued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_pod: Mapped[str | None] = mapped_column(String(253), nullable=True)
+    worker_node: Mapped[str | None] = mapped_column(String(253), nullable=True)
+    progress: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     run: Mapped[Run] = relationship(back_populates="tasks")

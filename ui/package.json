@@ -1,0 +1,30 @@
+{
+  "name": "transcributed-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "gen:api": "openapi-typescript ${API_OPENAPI_URL:-http://transcributed.homelab.home.arpa/openapi.json} -o src/lib/types.gen.ts",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
+    "openapi-fetch": "^0.17.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "openapi-typescript": "^7.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.0.0",
+    "vue-tsc": "^3.0.0"
+  }
+}

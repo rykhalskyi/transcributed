@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
-from transcributed.api.routes import projects, runs, tasks
+from transcributed.api.routes import nas, projects, runs, tasks, workers
 from transcributed.config import get_settings
 from transcributed.db import engine
 from transcributed.errors import AppError
@@ -50,11 +50,14 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition"],
     )
 
     app.include_router(projects.router, prefix=settings.api_prefix)
     app.include_router(runs.router, prefix=settings.api_prefix)
     app.include_router(tasks.router, prefix=settings.api_prefix)
+    app.include_router(nas.router, prefix=settings.api_prefix)
+    app.include_router(workers.router, prefix=settings.api_prefix)
 
     @app.exception_handler(AppError)
     async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:

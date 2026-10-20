@@ -48,6 +48,7 @@ def test_project_add_start_and_process(
     assert response.status_code == 200
     task = response.json()
     assert task["status"] == "succeeded"
+    assert task["progress"] == 100
     assert len(task["artifacts"]) == 2
 
     response = client.get(f"/api/v1/tasks/{task_id}/files/txt")
@@ -64,6 +65,20 @@ def test_project_add_start_and_process(
     run = response.json()
     assert run["status"] == "completed"
     assert run["tasks"][0]["status"] == "succeeded"
+
+    response = client.get(f"/api/v1/projects/{project_id}/items")
+    assert response.status_code == 200
+    item = response.json()[0]
+    assert item["latest_task_status"] == "succeeded"
+    assert item["latest_task_progress"] == 100
+    assert item["latest_task_artifacts"]
+    assert {artifact["format"] for artifact in item["latest_task_artifacts"]} == {
+        "txt",
+        "metadata",
+    }
+    assert all(
+        "content" not in artifact for artifact in item["latest_task_artifacts"]
+    )
 
 
 def test_only_requested_formats_are_written(

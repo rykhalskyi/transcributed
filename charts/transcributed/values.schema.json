@@ -64,6 +64,10 @@
             "port": {"type": "integer", "minimum": 1, "maximum": 65535}
           }
         },
+        "corsOrigins": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
         "ingress": {
           "type": "object",
           "properties": {

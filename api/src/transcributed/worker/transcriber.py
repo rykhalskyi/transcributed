@@ -29,6 +29,7 @@ class Transcriber(Protocol):
         spec: dict[str, Any],
         *,
         should_cancel: Callable[[], bool] | None = None,
+        on_progress: Callable[[int], None] | None = None,
     ) -> dict[str, str]: ...
 
 
@@ -196,6 +197,7 @@ class FasterWhisperTranscriber:
         spec: dict[str, Any],
         *,
         should_cancel: Callable[[], bool] | None = None,
+        on_progress: Callable[[int], None] | None = None,
     ) -> dict[str, str]:
         started = time.monotonic()
         model_name = str(spec.get("model") or "small")
@@ -231,11 +233,20 @@ class FasterWhisperTranscriber:
         segments: list[TranscriptSegment] = []
         next_cancel_check = 0.0
         next_progress = 0.0
+        reported_percent = -1
+        if on_progress is not None:
+            on_progress(0)
         for segment in segments_iter:
             if should_cancel is not None and segment.end >= next_cancel_check:
                 if should_cancel():
                     raise TaskCancelled("cancelled by user")
                 next_cancel_check = segment.end + CANCEL_CHECK_INTERVAL_SECONDS
+            if duration_seconds > 0:
+                percent = min(99, int(float(segment.end) / duration_seconds * 100))
+                if percent > reported_percent:
+                    reported_percent = percent
+                    if on_progress is not None:
+                        on_progress(percent)
             if segment.end >= next_progress:
                 log.info(
                     "transcription_progress",
@@ -279,8 +290,11 @@ class FakeTranscriber:
         spec: dict[str, Any],
         *,
         should_cancel: Callable[[], bool] | None = None,
+        on_progress: Callable[[int], None] | None = None,
     ) -> dict[str, str]:
         text = f"[Fake transcript for {input_path.name}]"
+        if on_progress is not None:
+            on_progress(100)
         formats = set(spec.get("output_formats") or ["txt"])
         files: dict[str, str] = {}
 

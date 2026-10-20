@@ -35,6 +35,15 @@ spec:
             image: "{{ include "transcributed.workerImage" . }}"
             imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
             {{- include "transcributed.envFrom" . | nindent 12 }}
+            env:
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
             {{- if .Values.nas.enabled }}
             volumeMounts:
               - name: nas
