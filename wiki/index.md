@@ -5,9 +5,12 @@
 ## Overview
 - [project-overview](pages/project-overview.md) — Project purpose, tech stack, folder layout, and key concepts.
 - [build-deploy](pages/build-deploy.md) — Build, test, lint, release images and the Helm chart, and deploy through the homelab repo.
+- [running-transcriptions](pages/running-transcriptions.md) — API runbook — create projects, queue NAS lectures, track runs, and download transcripts.
+- [transcributed-on-talos](pages/transcributed-on-talos.md) — Live Talos topology — Flux, KEDA, RabbitMQ, CloudNativePG, NAS input, and worker Jobs.
 
 ## Specs
 - [specs/control-plane](pages/specs/control-plane.md) — Project/run/task control-plane model with explicit user-triggered ingestion.
 
 ## Plans
+- [plans/ui-slice](pages/plans/ui-slice.md) — Vue 3 white-themed LAN UI for projects, NAS file selection, runs, workers, and transcript downloads.
 - [plans/worker-slice](pages/plans/worker-slice.md) — Phased plan for the real Faster Whisper worker, container image, Kubernetes Jobs/KEDA, and end-to-end verification.

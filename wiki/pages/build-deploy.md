@@ -111,6 +111,9 @@ cluster secrets.
   and the `TriggerAuthentication`; it does not install those operators.
 - Secrets are created in `homelab` (SOPS/age) and referenced here by name.
 
+For the live cluster topology see [Transcributed on Talos](transcributed-on-talos.md);
+for the API runbook see [Running transcriptions](running-transcriptions.md).
+
 See [the chart README](../../charts/transcributed/README.md) for every value.
 
 ## Secrets contract
@@ -131,18 +134,22 @@ as `imagePullSecrets`.
 
 ## NAS
 
-There is no NAS share yet, so `nas.enabled=false` is the default: the chart
-renders no volumes and no mounts.
+The live Talos deployment sets `nas.enabled=true`, `nas.create=true`,
+`nas.server=192.168.2.112`, and
+`nas.share=/volume1/video/lectures`, which renders a static NFS PV/PVC mounted
+read-only at `/nas/lectures`. See
+[Transcributed on Talos](transcributed-on-talos.md).
 
-When the share exists, choose one:
+For another share, choose one:
 
 - create a `ReadOnlyMany` PVC in `homelab` and set `nas.existingClaim`; or
 - set `nas.create=true` with `nas.server` and `nas.share` to render a static NFS
   PV/PVC.
 
-Talos nodes need NFS mount support (NFS extension or `csi-driver-nfs`) before the
-PV can bind. The NAS stays read-only at `NAS_INPUT_ROOT` (default
-`/nas/lectures`).
+Talos mounts NFS natively; no NFS extension or `csi-driver-nfs` was needed for
+this deployment. Leave `nas.mountOptions` empty so the client negotiates the
+version — the Synology rejects `nfsvers=4.1` (`Protocol not supported`). The NAS
+stays read-only at `NAS_INPUT_ROOT` (default `/nas/lectures`).
 
 ## Install / upgrade
 
@@ -174,5 +181,5 @@ kubectl -n transcributed port-forward svc/transcributed-api 8000:8000
 curl -fsS http://localhost:8000/readyz
 ```
 
-KEDA scales one worker Job per message above `queueLength` (default `1`), with
-`maxReplicaCount: 1`.
+KEDA scales one worker Job per message above `queueLength` (default `1`). The
+chart default is `maxReplicaCount: 1`; the Talos deployment raises it to `2`.

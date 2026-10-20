@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ settings = get_settings()
 log = structlog.get_logger(__name__)
 
 CANCEL_CHECK_CONNECT_TIMEOUT_SECONDS = 5
+PROGRESS_CONNECT_TIMEOUT_SECONDS = 5
 
 CONTENT_TYPES = {
     "vtt": "text/vtt; charset=utf-8",
@@ -122,6 +124,52 @@ class CancellationCheck:
                     exc_info=True,
                 )
 
+class ProgressReporter:
+    def __init__(self, task_id: UUID, dsn: str) -> None:
+        self.task_id = task_id
+        self.dsn = dsn
+        self._connection: psycopg.Connection[Any] | None = None
+        self._last_percent = -1
+
+    def __call__(self, percent: int) -> None:
+        value = max(0, min(100, int(percent)))
+        if value <= self._last_percent:
+            return
+        try:
+            if self._connection is None or self._connection.closed:
+                self._connection = psycopg.connect(
+                    self.dsn,
+                    autocommit=True,
+                    connect_timeout=PROGRESS_CONNECT_TIMEOUT_SECONDS,
+                )
+            self._connection.execute(
+                "UPDATE tasks SET progress = GREATEST(progress, %s), "
+                "updated_at = now() WHERE id = %s",
+                (value, self.task_id),
+            )
+        except Exception:
+            log.warning(
+                "progress_report_failed",
+                task_id=str(self.task_id),
+                progress=value,
+                exc_info=True,
+            )
+            self.close()
+            return
+        self._last_percent = value
+
+    def close(self) -> None:
+        connection = self._connection
+        self._connection = None
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                log.warning(
+                    "progress_report_close_failed",
+                    task_id=str(self.task_id),
+                    exc_info=True,
+                )
 
 
 async def load_task(session: AsyncSession, task_id: UUID) -> Task | None:
@@ -174,6 +222,9 @@ async def process_task(
     task.attempts += 1
     task.started_at = now
     task.finished_at = None
+    task.worker_pod = os.getenv("POD_NAME") or None
+    task.worker_node = os.getenv("NODE_NAME") or None
+    task.progress = 0
     task.error = None
     await session.flush()
     await refresh_run_status(session, task.run_id)
@@ -199,15 +250,21 @@ async def process_task(
             task.id,
             sync_database_url(settings.database_url),
         )
+        progress_reporter = ProgressReporter(
+            task.id,
+            sync_database_url(settings.database_url),
+        )
         started = time.monotonic()
         try:
             files = worker.transcribe(
                 resolved.absolute_path,
                 task.spec,
                 should_cancel=cancel_check,
+                on_progress=progress_reporter,
             )
         finally:
             cancel_check.close()
+            progress_reporter.close()
         elapsed_seconds = round(time.monotonic() - started, 3)
 
         worker_details: dict[str, Any] = {}
@@ -230,6 +287,9 @@ async def process_task(
                 "transcriber": type(worker).__name__,
                 "model": task.spec.get("model"),
                 "worker": worker_details,
+                "worker_pod": task.worker_pod,
+                "worker_node": task.worker_node,
+                "progress_percent": 100,
                 "elapsed_seconds": elapsed_seconds,
                 "generated_at": datetime.now(UTC).isoformat(),
             },
@@ -280,6 +340,7 @@ async def process_task(
         session.add_all(artifacts)
 
         task.status = TaskStatus.SUCCEEDED
+        task.progress = 100
         task.finished_at = datetime.now(UTC)
         task.error = None
         await session.flush()

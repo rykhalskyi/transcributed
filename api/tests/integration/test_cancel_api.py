@@ -123,6 +123,7 @@ class CancellingTranscriber:
         spec: dict[str, Any],
         *,
         should_cancel: Any | None = None,
+        on_progress: Any | None = None,
     ) -> dict[str, str]:
         with psycopg.connect(DSN, autocommit=True) as connection:
             connection.execute(

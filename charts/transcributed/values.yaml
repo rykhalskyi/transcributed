@@ -45,6 +45,8 @@ api:
   service:
     type: ClusterIP
     port: 8000
+  corsOrigins:
+    - http://localhost:5173
   ingress:
     enabled: false
     className: traefik
@@ -90,10 +92,10 @@ worker:
   resources:
     requests:
       cpu: "1"
-      memory: 2Gi
+      memory: 4Gi
     limits:
       cpu: "4"
-      memory: 4Gi
+      memory: 12Gi
   podSecurityContext: {}
   securityContext: {}
   nodeSelector: {}

@@ -42,6 +42,7 @@ class AlwaysFailTranscriber:
         spec: dict[str, Any],
         *,
         should_cancel: Any | None = None,
+        on_progress: Any | None = None,
     ) -> dict[str, str]:
         raise RuntimeError("transcription failed")
 
@@ -53,6 +54,7 @@ class PermanentlyBrokenTranscriber:
         spec: dict[str, Any],
         *,
         should_cancel: Any | None = None,
+        on_progress: Any | None = None,
     ) -> dict[str, str]:
         raise PermanentTaskError("worker image contains model 'small'")
 
