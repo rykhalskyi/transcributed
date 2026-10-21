@@ -81,7 +81,6 @@ def build_effective_spec(
     language = base.get("language", "auto")
     model = base.get("model", "small")
     output_formats = base.get("output_formats", ["txt"])
-    max_attempts = base.get("max_attempts", 3)
 
     if language not in SUPPORTED_LANGUAGES:
         raise ValidationError(f"Unsupported language: {language}")
@@ -92,8 +91,6 @@ def build_effective_spec(
     for output_format in output_formats:
         if output_format not in SUPPORTED_OUTPUT_FORMATS:
             raise ValidationError(f"Unsupported output format: {output_format}")
-    if not isinstance(max_attempts, int) or not 1 <= max_attempts <= 10:
-        raise ValidationError("max_attempts must be between 1 and 10")
 
     return {
         "spec_version": SPEC_VERSION,
@@ -101,7 +98,6 @@ def build_effective_spec(
         "language": language,
         "model": model,
         "output_formats": list(dict.fromkeys(output_formats)),
-        "max_attempts": max_attempts,
     }
 
 

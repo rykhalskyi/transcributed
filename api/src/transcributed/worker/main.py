@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +21,7 @@ from transcributed.config import get_settings
 from transcributed.db import SessionLocal, engine
 from transcributed.enums import TaskStatus
 from transcributed.logging import configure_logging
-from transcributed.messaging.topology import declare_topology, retry_routing_key
+from transcributed.messaging.topology import declare_topology
 from transcributed.models import Artifact, ProjectItem, Task
 from transcributed.services.spec import resolve_input_path
 from transcributed.services.status import refresh_run_status
@@ -47,7 +48,6 @@ CONTENT_TYPES = {
 
 class TaskDisposition(StrEnum):
     SUCCEEDED = "succeeded"
-    RETRY = "retry"
     FAILED = "failed"
     CANCELLED = "cancelled"
     NOOP = "noop"
@@ -58,8 +58,6 @@ class TaskOutcome:
     disposition: TaskDisposition
     task_id: UUID | None = None
     run_id: UUID | None = None
-    attempts: int = 0
-    retry_routing_key: str | None = None
 
 
 def create_transcriber() -> Transcriber:
@@ -109,7 +107,7 @@ class CancellationCheck:
             )
             self.close()
             return False
-        return row is not None and row[0] == TaskStatus.CANCELLED.value
+        return row is None or row[0] != TaskStatus.PROCESSING.value
 
     def close(self) -> None:
         connection = self._connection
@@ -202,24 +200,22 @@ async def process_task(
         log.info("task_already_terminal", task_id=str(task_id), status=task.status)
         return TaskOutcome(TaskDisposition.NOOP)
 
-    if task.attempts >= task.max_attempts:
+    if task.status == TaskStatus.PROCESSING:
         task.status = TaskStatus.FAILED
-        task.error = "max attempts exceeded"
+        task.error = "worker stopped before finishing the task"
         task.finished_at = datetime.now(UTC)
         await session.flush()
         await refresh_run_status(session, task.run_id)
         await session.commit()
-        log.error("task_max_attempts", task_id=str(task_id))
+        log.error("task_abandoned", task_id=str(task_id))
         return TaskOutcome(
             TaskDisposition.FAILED,
             task_id=task.id,
             run_id=task.run_id,
-            attempts=task.attempts,
         )
 
     now = datetime.now(UTC)
     task.status = TaskStatus.PROCESSING
-    task.attempts += 1
     task.started_at = now
     task.finished_at = None
     task.worker_pod = os.getenv("POD_NAME") or None
@@ -234,7 +230,6 @@ async def process_task(
         "task_started",
         task_id=str(task.id),
         run_id=str(task.run_id),
-        attempt=task.attempts,
         path=task.project_item.video.path,
     )
 
@@ -254,17 +249,27 @@ async def process_task(
             task.id,
             sync_database_url(settings.database_url),
         )
+        def run_transcription(
+            input_path: Path,
+            spec: dict[str, Any],
+        ) -> dict[str, str]:
+            try:
+                return worker.transcribe(
+                    input_path,
+                    spec,
+                    should_cancel=cancel_check,
+                    on_progress=progress_reporter,
+                )
+            finally:
+                cancel_check.close()
+                progress_reporter.close()
+
         started = time.monotonic()
-        try:
-            files = worker.transcribe(
-                resolved.absolute_path,
-                task.spec,
-                should_cancel=cancel_check,
-                on_progress=progress_reporter,
-            )
-        finally:
-            cancel_check.close()
-            progress_reporter.close()
+        files = await asyncio.to_thread(
+            run_transcription,
+            resolved.absolute_path,
+            task.spec,
+        )
         elapsed_seconds = round(time.monotonic() - started, 3)
 
         worker_details: dict[str, Any] = {}
@@ -303,7 +308,6 @@ async def process_task(
         if locked_status != TaskStatus.PROCESSING:
             current_task_id = task.id
             current_run_id = task.run_id
-            current_attempts = task.attempts
             await session.rollback()
             if locked_status == TaskStatus.CANCELLED:
                 log.info("task_cancelled", task_id=str(current_task_id))
@@ -311,7 +315,6 @@ async def process_task(
                     TaskDisposition.CANCELLED,
                     task_id=current_task_id,
                     run_id=current_run_id,
-                    attempts=current_attempts,
                 )
             return TaskOutcome(TaskDisposition.NOOP)
 
@@ -352,7 +355,6 @@ async def process_task(
             TaskDisposition.SUCCEEDED,
             task_id=task.id,
             run_id=task.run_id,
-            attempts=task.attempts,
         )
     except TaskCancelled:
         await session.rollback()
@@ -369,7 +371,6 @@ async def process_task(
             TaskDisposition.CANCELLED,
             task_id=task.id if task is not None else task_id,
             run_id=task.run_id if task is not None else None,
-            attempts=task.attempts if task is not None else 0,
         )
     except Exception as exc:
         await session.rollback()
@@ -382,9 +383,12 @@ async def process_task(
         )
         if task is None:
             return TaskOutcome(TaskDisposition.NOOP)
-        if task.status in (TaskStatus.SUCCEEDED, TaskStatus.CANCELLED):
+        if task.status in (
+            TaskStatus.SUCCEEDED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ):
             status = task.status
-            attempts = task.attempts
             run_id = task.run_id
             await session.rollback()
             if status == TaskStatus.CANCELLED:
@@ -393,27 +397,12 @@ async def process_task(
                     TaskDisposition.CANCELLED,
                     task_id=task_id,
                     run_id=run_id,
-                    attempts=attempts,
                 )
             return TaskOutcome(TaskDisposition.NOOP)
 
         task.error = str(exc)[:4000]
         if isinstance(exc, PermanentTaskError):
             log.error("task_permanent_failure", task_id=str(task_id), error=task.error)
-        if not isinstance(exc, PermanentTaskError) and task.attempts < task.max_attempts:
-            task.status = TaskStatus.QUEUED
-            task.finished_at = None
-            await session.flush()
-            await refresh_run_status(session, task.run_id)
-            await session.commit()
-            return TaskOutcome(
-                TaskDisposition.RETRY,
-                task_id=task.id,
-                run_id=task.run_id,
-                attempts=task.attempts,
-                retry_routing_key=retry_routing_key(task.attempts),
-            )
-
         task.status = TaskStatus.FAILED
         task.finished_at = datetime.now(UTC)
         await session.flush()
@@ -423,45 +412,7 @@ async def process_task(
             TaskDisposition.FAILED,
             task_id=task.id,
             run_id=task.run_id,
-            attempts=task.attempts,
         )
-
-
-async def _mark_enqueued(task_id: UUID) -> None:
-    async with SessionLocal() as session:
-        task = await session.get(Task, task_id)
-        if task is not None:
-            task.enqueued_at = datetime.now(UTC)
-            await session.commit()
-
-
-async def _mark_retry_publish_failed(task_id: UUID) -> None:
-    async with SessionLocal() as session:
-        task = await session.get(Task, task_id)
-        if task is None or task.status in (
-            TaskStatus.SUCCEEDED,
-            TaskStatus.CANCELLED,
-        ):
-            return
-        task.status = TaskStatus.FAILED
-        task.error = "failed to publish retry message"
-        task.finished_at = datetime.now(UTC)
-        await session.flush()
-        await refresh_run_status(session, task.run_id)
-        await session.commit()
-
-
-def _task_message(task_id: UUID, run_id: UUID) -> aio_pika.Message:
-    body = json.dumps(
-        {"v": 1, "task_id": str(task_id), "run_id": str(run_id)},
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return aio_pika.Message(
-        body=body,
-        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-        content_type="application/json",
-        message_id=str(task_id),
-    )
 
 
 async def run_once() -> int:
@@ -489,7 +440,7 @@ async def run_once() -> int:
             payload = json.loads(message.body)
             task_id = UUID(payload["task_id"])
             run_id = UUID(payload["run_id"])
-        except Exception:
+        except (KeyError, TypeError, ValueError):
             log.exception("worker_invalid_message")
             await message.reject(requeue=False)
             await engine.dispose()
@@ -499,31 +450,25 @@ async def run_once() -> int:
             async with SessionLocal() as session:
                 outcome = await process_task(session, task_id)
         except Exception:
-            log.exception("worker_unhandled_error", task_id=str(task_id))
-            await message.reject(requeue=False)
+            log.exception(
+                "worker_unhandled_error",
+                task_id=str(task_id),
+                run_id=str(run_id),
+            )
             raise
 
-        if outcome.disposition == TaskDisposition.RETRY:
-            routing_key = outcome.retry_routing_key or retry_routing_key(outcome.attempts)
-            try:
-                await topology.exchange.publish(
-                    _task_message(task_id, outcome.run_id or run_id),
-                    routing_key=routing_key,
-                )
-            except Exception:
-                log.exception("retry_publish_failed", task_id=str(task_id))
-                await _mark_retry_publish_failed(task_id)
+        try:
+            if outcome.disposition == TaskDisposition.FAILED:
                 await message.reject(requeue=False)
-                await engine.dispose()
-                return 1
-            await _mark_enqueued(task_id)
-            await message.ack()
-        elif outcome.disposition == TaskDisposition.CANCELLED:
-            await message.ack()
-        elif outcome.disposition == TaskDisposition.FAILED:
-            await message.reject(requeue=False)
-        else:
-            await message.ack()
+            else:
+                await message.ack()
+        except Exception:
+            log.warning(
+                "worker_message_settle_failed",
+                task_id=str(task_id),
+                disposition=outcome.disposition,
+                exc_info=True,
+            )
 
     await engine.dispose()
     return 0

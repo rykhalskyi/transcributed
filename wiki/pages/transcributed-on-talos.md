@@ -67,8 +67,7 @@ flowchart LR
    PostgreSQL.
 5. The client polls the API for run/task status and downloads artifacts from
    PostgreSQL.
-6. Failed tasks retry through `transcription.retry.1m` and
-   `transcription.retry.10m` until `max_attempts`; terminal failures go to
+6. Failed tasks are not retried automatically; terminal failures go to
    `transcription.dead`. Cancellation is cooperative (checked every ~30s of
    audio) and unlocks the project for a new run.
 

@@ -67,8 +67,7 @@ PROJECT=$(curl -sS $RESOLVE -X POST "$BASE/api/v1/projects" \
     "defaults": {
       "language": "ru",
       "model": "small",
-      "output_formats": ["txt", "vtt", "json"],
-      "max_attempts": 3
+      "output_formats": ["txt", "vtt", "json"]
     }
   }')
 echo "$PROJECT" | jq '{id, name, status, defaults}'
@@ -91,7 +90,7 @@ Poll the run until it reaches a terminal status:
 
 ```bash
 curl -sS $RESOLVE "$BASE/api/v1/runs/$RUN_ID" \
-  | jq '{status, tasks: [.tasks[] | {id, status, attempts, error, artifacts}]}'
+  | jq '{status, tasks: [.tasks[] | {id, status, error, artifacts}]}'
 ```
 
 Download an artifact once its task is `succeeded`:
@@ -126,13 +125,12 @@ curl -sS $RESOLVE -X POST "$BASE/api/v1/projects" \
   -d '{"name":"Course X","description":"optional","defaults":{
         "language":"auto",
         "model":"small",
-        "output_formats":["txt"],
-        "max_attempts":3
+        "output_formats":["txt"]
       }}'
 ```
 
 `defaults` is optional; the defaults are `language: auto`, `model: small`,
-`output_formats: ["txt"]`, `max_attempts: 3`.
+`output_formats: ["txt"]`.
 
 ### 2. Add lectures
 
@@ -172,14 +170,14 @@ Run detail includes every task and its artifacts:
 
 ```bash
 curl -sS $RESOLVE "$BASE/api/v1/runs/$RUN_ID" \
-  | jq '{status, tasks: [.tasks[] | {id, status, progress, attempts, error}]}'
+  | jq '{status, tasks: [.tasks[] | {id, status, progress, error}]}'
 ```
 
 Single task:
 
 ```bash
 curl -sS $RESOLVE "$BASE/api/v1/tasks/$TASK_ID" \
-  | jq '{status, progress, attempts, error, artifacts}'
+  | jq '{status, progress, error, artifacts}'
 ```
 
 The KEDA side:
@@ -258,7 +256,7 @@ curl -sS $RESOLVE -X DELETE -o /dev/null -w '%{http_code}\n' \
 # Change defaults for future runs
 curl -sS $RESOLVE -X PATCH \
   -H 'Content-Type: application/json' \
-  -d '{"defaults":{"language":"ru","model":"small","output_formats":["txt","vtt"],"max_attempts":3}}' \
+  -d '{"defaults":{"language":"ru","model":"small","output_formats":["txt","vtt"]}}' \
   "$BASE/api/v1/projects/$PROJECT_ID" | jq
 ```
 
@@ -298,8 +296,9 @@ sequenceDiagram
   `WHISPER_LOCAL_FILES_ONLY=true`.
 - **Language:** `auto`, `en`, `ru`, or `de` (default `auto`).
 - **Outputs:** `txt`, `vtt`, `json` (default `txt`).
-- **Retries:** up to `max_attempts` (1-10, default 3), via the 1m and 10m retry
-  queues. Permanent errors (for example an unavailable model) do not retry.
+- **Retries:** none. A failed task is marked `failed` immediately and its message
+  goes to `transcription.dead`; a task left `processing` by a dead worker is marked
+  `failed` when its message is redelivered.
 - **Concurrency:** KEDA creates one worker Job per queued task, one at a time.
   More tasks wait in `transcription.jobs`.
 - **Runtime:** a Job has a 12-hour deadline (`activeDeadlineSeconds: 43200`) and
