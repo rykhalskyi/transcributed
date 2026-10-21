@@ -195,3 +195,7 @@ class WorkersResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class VersionResponse(BaseModel):
+    version: str

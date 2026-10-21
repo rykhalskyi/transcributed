@@ -7,13 +7,14 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
+from transcributed import __version__
 from transcributed.api.routes import nas, projects, runs, tasks, workers
 from transcributed.config import get_settings
 from transcributed.db import engine
 from transcributed.errors import AppError
 from transcributed.logging import configure_logging
 from transcributed.messaging.publisher import TaskPublisher
-from transcributed.schemas import HealthResponse
+from transcributed.schemas import HealthResponse, VersionResponse
 
 
 @asynccontextmanager
@@ -41,7 +42,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Transcributed API",
-        version="0.2.1",
+        version=__version__,
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -65,6 +66,10 @@ def create_app() -> FastAPI:
         if exc.details is not None:
             content["details"] = exc.details
         return JSONResponse(status_code=exc.status_code, content=content)
+
+    @app.get(f"{settings.api_prefix}/version", response_model=VersionResponse)
+    async def version() -> VersionResponse:
+        return VersionResponse(version=app.version)
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:

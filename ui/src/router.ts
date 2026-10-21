@@ -22,6 +22,11 @@ const router = createRouter({
       props: true,
     },
     {
+      path: "/workers",
+      name: "workers",
+      component: () => import("./pages/WorkersPage.vue"),
+    },
+    {
       path: "/:pathMatch(.*)*",
       name: "not-found",
       component: () => import("./pages/NotFoundPage.vue"),

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import tomllib
@@ -11,9 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATH = ROOT / "VERSION"
 PYPROJECT_PATH = ROOT / "api" / "pyproject.toml"
 INIT_PATH = ROOT / "api" / "src" / "transcributed" / "__init__.py"
-APP_PATH = ROOT / "api" / "src" / "transcributed" / "api" / "app.py"
 CHART_PATH = ROOT / "charts" / "transcributed" / "Chart.yaml"
 LOCK_PATH = ROOT / "api" / "uv.lock"
+UI_PACKAGE_PATH = ROOT / "ui" / "package.json"
+UI_LOCK_PATH = ROOT / "ui" / "package-lock.json"
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -62,20 +64,30 @@ def lock_version() -> str:
     return match.group(1)
 
 
+def ui_package_version() -> str:
+    return str(json.loads(read_text(UI_PACKAGE_PATH))["version"])
+
+
+def ui_lock_versions() -> tuple[str, str]:
+    data = json.loads(read_text(UI_LOCK_PATH))
+    return str(data["version"]), str(data["packages"][""]["version"])
+
+
 def collect() -> dict[str, str]:
     chart_version, chart_app_version = chart_versions()
+    ui_lock_version, ui_lock_package_version = ui_lock_versions()
     return {
         "VERSION": version_from_file(),
         "api/pyproject.toml": pyproject_version(),
         "api/src/transcributed/__init__.py": regex_version(
             INIT_PATH, r'^__version__ = "([^"]+)"', "__version__"
         ),
-        "api/src/transcributed/api/app.py": regex_version(
-            APP_PATH, r"^\s*version=\"([^\"]+)\"", "FastAPI version"
-        ),
         "charts/transcributed/Chart.yaml (version)": chart_version,
         "charts/transcributed/Chart.yaml (appVersion)": chart_app_version,
         "api/uv.lock": lock_version(),
+        "ui/package.json": ui_package_version(),
+        "ui/package-lock.json": ui_lock_version,
+        "ui/package-lock.json (packages[''])": ui_lock_package_version,
     }
 
 
@@ -112,6 +124,18 @@ def replace_once(path: Path, pattern: str, replacement: str) -> None:
         path.write_text(updated, encoding="utf-8")
 
 
+def write_json_version(path: Path, new_version: str) -> None:
+    text = read_text(path)
+    data = json.loads(text)
+    data["version"] = new_version
+    packages = data.get("packages")
+    if isinstance(packages, dict) and "" in packages:
+        packages[""]["version"] = new_version
+    updated = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if updated != text:
+        path.write_text(updated, encoding="utf-8")
+
+
 def bump(new_version: str) -> int:
     if not VERSION_RE.match(new_version):
         print(f"invalid version {new_version!r}; expected X.Y.Z", file=sys.stderr)
@@ -120,9 +144,6 @@ def bump(new_version: str) -> int:
     VERSION_PATH.write_text(f"{new_version}\n", encoding="utf-8")
     replace_once(PYPROJECT_PATH, r'^version = "[^"]*"', f'version = "{new_version}"')
     replace_once(INIT_PATH, r'^__version__ = "[^"]*"', f'__version__ = "{new_version}"')
-    replace_once(
-        APP_PATH, r'^(\s*version=)"[^"]*"', rf'\1"{new_version}"'
-    )
     replace_once(CHART_PATH, r"^version: .*$", f"version: {new_version}")
     replace_once(CHART_PATH, r"^appVersion: .*$", f'appVersion: "{new_version}"')
     replace_once(
@@ -130,6 +151,8 @@ def bump(new_version: str) -> int:
         r'(^\[\[package\]\]\nname = "transcributed"\nversion = ")[^"]+(")',
         rf"\g<1>{new_version}\g<2>",
     )
+    write_json_version(UI_PACKAGE_PATH, new_version)
+    write_json_version(UI_LOCK_PATH, new_version)
 
     print(f"bumped to {new_version}")
     return check(None)

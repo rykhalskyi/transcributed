@@ -294,25 +294,31 @@ Usage rules:
 `/projects/:id`
 
 - Header with project status/defaults and edit/delete.
-- Add lectures:
+- Add lectures: a compact block with only a **Browse NAS** button.
   - NAS browser modal using `GET /api/v1/nas/files`: breadcrumbs, directory
     navigation, multi-select, allowed files only.
-  - Fallback multi-line path input.
   - Show per-file `accepted`/`rejected` results from `ProjectItemsAddResponse`.
 - Item table:
   - Path/basename, included toggle, language/model override.
   - Status badge; spinner for `processing`, clock for `queued`, and a percentage
     progress bar from `latest_task_progress` while processing.
-  - Attempts, error, per-item cancel.
+  - Error display.
   - Download menu from `latest_task_artifacts` (`txt`, `vtt`, `json`, `metadata`).
   - Remove item.
 - Start run: disabled while an active run exists or no items are included; surface
   `409` and `503` errors.
 - Cancel run with confirmation.
-- Worker panel from `GET /api/v1/workers?project_id=...`: active count, queued count,
-  node, pod, path, elapsed time, cancel button.
+- Brief worker pill in the header linking to `/workers?project_id=...`, showing
+  active and queued counts.
 - Run history from `GET /api/v1/projects/{id}/runs`.
 - Header progress bar combining finished tasks with the live percentage of active ones.
+
+`/workers`
+
+- Global worker overview from `GET /api/v1/workers`.
+- `?project_id=...` filters the list to one project.
+- Table: worker/pod, node, project, lecture, progress, started time, cancel action.
+- Active/queued summary counts.
 
 `/runs/:id`
 
@@ -328,7 +334,7 @@ Usage rules:
   run is active; every 15-30 seconds when idle.
 - Run detail: every 2 seconds while non-terminal; stop at `completed`,
   `partially_failed`, `failed`, or `cancelled`.
-- Worker panel: every 5 seconds while active.
+- Workers page: every 3 seconds while visible.
 - Refresh project and items after start, cancel, add, and remove.
 - Poll artifact metadata only; never fetch transcript content for the list.
 

@@ -4,18 +4,21 @@ import { useRoute } from "vue-router";
 
 import ApiStatus from "./ApiStatus.vue";
 import BrandLogo from "./BrandLogo.vue";
+import VersionInfo from "./VersionInfo.vue";
 
 const route = useRoute();
 
 const section = computed(() => {
   if (route.name === "run") return "Run";
   if (route.name === "project") return "Project";
+  if (route.name === "workers") return "Workers";
   return "Projects";
 });
 
 const projectsActive = computed(
   () => route.name === "projects" || route.name === "project",
 );
+const workersActive = computed(() => route.name === "workers");
 </script>
 
 <template>
@@ -25,10 +28,9 @@ const projectsActive = computed(
     >
       <RouterLink
         to="/projects"
-        class="flex items-center gap-2 px-5 py-5"
+        class="flex items-center px-5 py-5"
         aria-label="Transcributed projects"
       >
-        <BrandLogo variant="mark" class="h-7 w-auto" />
         <BrandLogo variant="wordmark" class="h-5 w-auto" />
       </RouterLink>
 
@@ -45,6 +47,19 @@ const projectsActive = computed(
           <span class="h-1.5 w-1.5 rounded-full bg-current" />
           Projects
         </RouterLink>
+
+        <RouterLink
+          to="/workers"
+          class="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition"
+          :class="
+            workersActive
+              ? 'bg-brand-purple-soft text-brand-purple'
+              : 'text-brand-navy hover:bg-surface-muted'
+          "
+        >
+          <span class="h-1.5 w-1.5 rounded-full bg-current" />
+          Workers
+        </RouterLink>
       </nav>
 
       <div class="border-t border-border px-5 py-4 text-xs leading-relaxed text-text-muted">
@@ -58,13 +73,6 @@ const projectsActive = computed(
         class="flex h-16 items-center justify-between gap-4 border-b border-border px-4 sm:px-6"
       >
         <div class="flex items-center gap-3">
-          <RouterLink
-            to="/projects"
-            class="md:hidden"
-            aria-label="Transcributed projects"
-          >
-            <BrandLogo variant="mark" class="h-7 w-auto" />
-          </RouterLink>
           <div>
             <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
               {{ section }}
@@ -72,7 +80,10 @@ const projectsActive = computed(
             <p class="text-base font-bold leading-tight">Transcributed</p>
           </div>
         </div>
-        <ApiStatus />
+        <div class="flex items-center gap-3">
+          <VersionInfo />
+          <ApiStatus />
+        </div>
       </header>
 
       <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">

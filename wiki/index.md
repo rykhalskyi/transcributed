@@ -12,5 +12,6 @@
 - [specs/control-plane](pages/specs/control-plane.md) — Project/run/task control-plane model with explicit user-triggered ingestion.
 
 ## Plans
+- [plans/nas-folder-picking](pages/plans/nas-folder-picking.md) — Recursive NAS folder browsing and batch lecture picking across directory trees.
 - [plans/ui-slice](pages/plans/ui-slice.md) — Vue 3 white-themed LAN UI for projects, NAS file selection, runs, workers, and transcript downloads.
 - [plans/worker-slice](pages/plans/worker-slice.md) — Phased plan for the real Faster Whisper worker, container image, Kubernetes Jobs/KEDA, and end-to-end verification.
