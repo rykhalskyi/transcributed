@@ -49,6 +49,18 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s:%s" .Values.worker.image.repository (default .Chart.AppVersion .Values.worker.image.tag) }}
 {{- end }}
 
+{{- define "transcributed.uiImage" -}}
+{{- printf "%s:%s" .Values.ui.image.repository (default .Chart.AppVersion .Values.ui.image.tag) }}
+{{- end }}
+
+{{- define "transcributed.uiApiUpstream" -}}
+{{- if .Values.ui.apiUpstream }}
+{{- .Values.ui.apiUpstream | trimSuffix "/" }}
+{{- else }}
+{{- printf "http://%s-api:%v" (include "transcributed.fullname" .) .Values.api.service.port }}
+{{- end }}
+{{- end }}
+
 {{- define "transcributed.nasClaimName" -}}
 {{- if .Values.nas.existingClaim }}
 {{- .Values.nas.existingClaim }}

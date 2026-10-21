@@ -37,11 +37,17 @@ jobs:
       matrix:
         include:
           - target: api
+            context: ./api
             image: transcributed-api
             build_args: ""
           - target: worker
+            context: ./api
             image: transcributed-worker
             build_args: "WHISPER_MODEL=small"
+          - target: runtime
+            context: ./ui
+            image: transcributed-ui
+            build_args: ""
     steps:
       - uses: actions/checkout@v5
 
@@ -66,7 +72,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ./api
+          context: ${{ matrix.context }}
           target: ${{ matrix.target }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
