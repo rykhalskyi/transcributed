@@ -8,6 +8,14 @@ Secret contract:
 API:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "transcributed.fullname" . }}-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }}
 
+UI:
+{{- if .Values.ui.enabled }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "transcributed.fullname" . }}-ui 8080:{{ .Values.ui.service.port }}
+  The UI proxies /api, /healthz and /readyz to {{ include "transcributed.uiApiUpstream" . }}.
+{{- else }}
+  Disabled. Set ui.enabled=true to deploy the web UI.
+{{- end }}
+
 Worker:
   KEDA ScaledJob {{ include "transcributed.fullname" . }}-worker scales on
   RabbitMQ queue {{ .Values.config.rabbitmqJobsQueue }} ({{ .Values.worker.keda.queueLength }}).

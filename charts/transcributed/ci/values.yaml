@@ -13,3 +13,17 @@ nas:
 api:
   ingress:
     enabled: true
+    hosts:
+      - host: api.example.internal
+        paths:
+          - path: /
+            pathType: Prefix
+
+ui:
+  ingress:
+    enabled: true
+    hosts:
+      - host: ui.example.internal
+        paths:
+          - path: /
+            pathType: Prefix

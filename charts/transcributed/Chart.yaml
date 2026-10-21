@@ -1,6 +1,6 @@
 apiVersion: v2
 name: transcributed
-description: Lecture transcription control plane and Faster Whisper worker
+description: Lecture transcription control plane, web UI, and Faster Whisper worker
 type: application
 version: 0.2.5
 appVersion: "0.2.5"

@@ -1,7 +1,7 @@
 # Transcributed Helm chart
 
-Deploys the Transcributed API, the Faster Whisper worker as a KEDA `ScaledJob`,
-and the database migration hook.
+Deploys the Transcributed web UI and API, the Faster Whisper worker as a KEDA
+`ScaledJob`, and the database migration hook.
 
 ## Prerequisites
 
@@ -11,8 +11,9 @@ and the database migration hook.
 - PostgreSQL reachable from the cluster (CloudNativePG in the homelab)
 - RabbitMQ reachable from the cluster
 - A NAS share or an existing `ReadOnlyMany` PVC
-- Images: `ghcr.io/rykhalskyi/transcributed-api` and
-  `ghcr.io/rykhalskyi/transcributed-worker`
+- Images: `ghcr.io/rykhalskyi/transcributed-api`,
+  `ghcr.io/rykhalskyi/transcributed-worker` and
+  `ghcr.io/rykhalskyi/transcributed-ui`
 
 ## Secrets
 
@@ -49,6 +50,11 @@ migration to roll the release back.
 
 | Value | Default | Purpose |
 |---|---|---|
+| `ui.enabled` | `true` | Deploy the web UI |
+| `ui.image.repository` | `ghcr.io/rykhalskyi/transcributed-ui` | UI image (static build + nginx) |
+| `ui.image.tag` | chart `appVersion` | Pin a `sha-<commit>` tag |
+| `ui.ingress.enabled` | `false` | Expose the UI |
+| `ui.apiUpstream` | chart API Service | API upstream used by the UI's nginx proxy |
 | `api.image.repository` | `ghcr.io/rykhalskyi/transcributed-api` | API image |
 | `api.image.tag` | chart `appVersion` | Pin a `sha-<commit>` tag |
 | `worker.image.repository` | `ghcr.io/rykhalskyi/transcributed-worker` | Worker image |
@@ -65,6 +71,32 @@ migration to roll the release back.
 The worker image is built with one model via the `WHISPER_MODEL` build arg. Keep
 `config.whisperModel` in sync with the image; a task requesting another model
 fails permanently instead of retrying.
+
+## UI and ingress
+
+The UI image builds the Vue app and serves it with nginx. nginx proxies `/api`,
+`/healthz` and `/readyz` to `ui.apiUpstream`, which defaults to the chart's API
+Service. The browser therefore talks to a single origin and no CORS change is
+needed.
+
+Expose the UI instead of the API:
+
+```bash
+helm upgrade --install transcributed charts/transcributed \
+  --namespace transcributed \
+  --set ui.ingress.enabled=true \
+  --set api.ingress.enabled=false
+```
+
+`ui.ingress` and `api.ingress` default to the same host. Do not enable both with
+the same host: the UI already routes API traffic. Keep `api.ingress.enabled=true`
+only if you also want a separate API-only hostname for debugging or `gen:api`.
+
+For a local check without an ingress:
+
+```bash
+kubectl -n transcributed port-forward svc/transcributed-ui 8080:80
+```
 
 ## NAS
 
@@ -92,7 +124,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-- `.github/workflows/images.yml` builds and pushes both images on `v*` tags and
+- `.github/workflows/images.yml` builds and pushes all three images on `v*` tags and
   on manual dispatch. Tags are `vX.Y.Z` and `sha-<full-commit>`.
 - `.github/workflows/chart.yml` lints and templates the chart on pull requests and
   pushes `transcributed-<version>.tgz` to

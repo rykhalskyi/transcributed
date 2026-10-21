@@ -78,7 +78,6 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
   pollingInterval: {{ .Values.worker.keda.pollingInterval }}
-  cooldownPeriod: {{ .Values.worker.keda.cooldownPeriod }}
   successfulJobsHistoryLimit: {{ .Values.worker.keda.successfulJobsHistoryLimit }}
   failedJobsHistoryLimit: {{ .Values.worker.keda.failedJobsHistoryLimit }}
   maxReplicaCount: {{ .Values.worker.keda.maxReplicaCount }}
