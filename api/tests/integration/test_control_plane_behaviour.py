@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from transcributed.api.app import app
 from transcributed.api.deps import get_publisher
 from transcributed.db import SessionLocal
+from transcributed.enums import TaskStatus
+from transcributed.models import Task
 from transcributed.worker.main import TaskDisposition, TaskOutcome, process_task
 from transcributed.worker.transcriber import FakeTranscriber, PermanentTaskError
 
@@ -235,35 +237,55 @@ def test_project_is_editable_between_runs(
     assert len(client.get(f"/api/v1/projects/{project_id}/runs").json()) == 2
 
 
-def test_failed_task_retries_then_fails(
+def test_failed_task_is_not_retried(
     client: TestClient,
     sample_video: str,
 ) -> None:
-    project_id = _create_project(client, max_attempts=2)
+    project_id = _create_project(client)
     _add_items(client, project_id, [sample_video])
 
     start = client.post(f"/api/v1/projects/{project_id}/start")
     assert start.status_code == 202
     task_id = start.json()["task_ids"][0]
 
-    first = _process(task_id, AlwaysFailTranscriber())
-    assert first.disposition == TaskDisposition.RETRY
-    assert first.retry_routing_key == "transcription.retry.1m"
-
-    task = client.get(f"/api/v1/tasks/{task_id}").json()
-    assert task["status"] == "queued"
-    assert task["attempts"] == 1
-    assert "transcription failed" in task["error"]
-    assert client.get(f"/api/v1/runs/{start.json()['run']['id']}").json()["status"] == "queued"
-
-    second = _process(task_id, AlwaysFailTranscriber())
-    assert second.disposition == TaskDisposition.FAILED
+    outcome = _process(task_id, AlwaysFailTranscriber())
+    assert outcome.disposition == TaskDisposition.FAILED
 
     task = client.get(f"/api/v1/tasks/{task_id}").json()
     assert task["status"] == "failed"
-    assert task["attempts"] == 2
+    assert "transcription failed" in task["error"]
     assert client.get(f"/api/v1/runs/{start.json()['run']['id']}").json()["status"] == "failed"
     assert client.get(f"/api/v1/projects/{project_id}").json()["status"] == "failed"
+
+
+def test_task_left_processing_by_a_dead_worker_fails_without_retry(
+    client: TestClient,
+    sample_video: str,
+) -> None:
+    project_id = _create_project(client)
+    _add_items(client, project_id, [sample_video])
+
+    start = client.post(f"/api/v1/projects/{project_id}/start")
+    assert start.status_code == 202
+    task_id = start.json()["task_ids"][0]
+
+    async def mark_processing() -> None:
+        async with SessionLocal() as session:
+            task = await session.get(Task, UUID(task_id))
+            assert task is not None
+            task.status = TaskStatus.PROCESSING
+            await session.commit()
+
+    asyncio.run(mark_processing())
+
+    outcome = _process(task_id)
+
+    assert outcome.disposition == TaskDisposition.FAILED
+    task = client.get(f"/api/v1/tasks/{task_id}").json()
+    assert task["status"] == "failed"
+    assert task["error"] == "worker stopped before finishing the task"
+    assert task["artifacts"] == []
+    assert client.get(f"/api/v1/runs/{start.json()['run']['id']}").json()["status"] == "failed"
 
 
 def test_concurrent_tasks_finish_the_run(
@@ -317,6 +339,5 @@ def test_permanent_failure_is_not_retried(
     assert outcome.disposition == TaskDisposition.FAILED
     task = client.get(f"/api/v1/tasks/{task_id}").json()
     assert task["status"] == "failed"
-    assert task["attempts"] == 1
     assert "worker image contains model" in task["error"]
     assert client.get(f"/api/v1/runs/{start.json()['run']['id']}").json()["status"] == "failed"

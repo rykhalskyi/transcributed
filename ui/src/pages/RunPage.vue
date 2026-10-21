@@ -240,7 +240,6 @@ onMounted(load);
                 <th>Status</th>
                 <th>Progress</th>
                 <th>Worker</th>
-                <th>Attempts</th>
                 <th>Started</th>
                 <th>Finished</th>
                 <th>Artifacts</th>
@@ -276,9 +275,6 @@ onMounted(load);
                   <div class="max-w-[10rem] truncate text-xs text-text-muted">
                     {{ task.worker_pod || "" }}
                   </div>
-                </td>
-                <td class="whitespace-nowrap text-text-muted">
-                  {{ task.attempts }}/{{ task.max_attempts }}
                 </td>
                 <td class="whitespace-nowrap text-xs text-text-muted">
                   {{ formatDate(task.started_at) }}

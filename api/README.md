@@ -66,9 +66,9 @@ uv run mypy src tests
   the newly created run and tasks.
 - `RABBITMQ_ENABLED=false` is an explicit development mode: starts succeed without
   publishing and report `not_enqueued` in the response.
-- Failed tasks are retried through `transcription.retry.1m` and
-  `transcription.retry.10m` up to `max_attempts`; terminal failures are routed to
-  the `transcription.dead` queue.
+- Failed tasks are not retried automatically; terminal failures are routed to
+  the `transcription.dead` queue. A task left `processing` by a worker that exited
+  is marked `failed` when its message is redelivered.
 - Cancel a task with `POST /api/v1/tasks/{id}/cancel` or a whole run with
   `POST /api/v1/runs/{id}/cancel`. Cancelling marks non-terminal tasks `cancelled`,
   discards any in-progress output, and unlocks the project for a new run. Workers

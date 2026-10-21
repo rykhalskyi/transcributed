@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
 from transcributed.config import get_settings
@@ -110,7 +111,7 @@ def test_cancelling_tasks_clears_workers(
 def test_worker_records_pod_and_node(
     client: TestClient,
     sample_video: str,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("POD_NAME", "worker-pod-42")
     monkeypatch.setenv("NODE_NAME", "node-7")

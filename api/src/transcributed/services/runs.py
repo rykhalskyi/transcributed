@@ -154,7 +154,6 @@ async def start_project(
             video_id=item.video_id,
             spec=effective_specs[item.id],
             spec_hash=spec_hash(effective_specs[item.id]),
-            max_attempts=effective_specs[item.id]["max_attempts"],
         )
         for item in items
     ]

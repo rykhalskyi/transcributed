@@ -42,8 +42,6 @@ async def list_workers(
             node=task.worker_node,
             pod=task.worker_pod,
             started_at=task.started_at,
-            attempts=task.attempts,
-            max_attempts=task.max_attempts,
             progress=task.progress,
         )
         for task in tasks

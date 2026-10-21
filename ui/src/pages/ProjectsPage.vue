@@ -26,7 +26,6 @@ const form = reactive({
   description: "",
   language: "auto" as Language,
   outputFormats: ["txt"] as OutputFormat[],
-  maxAttempts: 3,
 });
 
 const formats: { value: OutputFormat; label: string }[] = [
@@ -62,7 +61,6 @@ function resetForm() {
   form.description = "";
   form.language = "auto";
   form.outputFormats = ["txt"];
-  form.maxAttempts = 3;
 }
 
 function openDialog() {
@@ -97,7 +95,6 @@ async function submit() {
         language: form.language,
         model: "small",
         output_formats: form.outputFormats,
-        max_attempts: form.maxAttempts,
       },
     });
     dialogOpen.value = false;
@@ -230,30 +227,17 @@ onMounted(load);
               />
             </div>
 
-            <div class="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label class="label" for="project-language">Language</label>
-                <select id="project-language" v-model="form.language" class="input">
-                  <option
-                    v-for="language in languages"
-                    :key="language.value"
-                    :value="language.value"
-                  >
-                    {{ language.label }}
-                  </option>
-                </select>
-              </div>
-              <div>
-                <label class="label" for="project-attempts">Max attempts</label>
-                <input
-                  id="project-attempts"
-                  v-model.number="form.maxAttempts"
-                  class="input"
-                  type="number"
-                  min="1"
-                  max="10"
-                />
-              </div>
+            <div>
+              <label class="label" for="project-language">Language</label>
+              <select id="project-language" v-model="form.language" class="input">
+                <option
+                  v-for="language in languages"
+                  :key="language.value"
+                  :value="language.value"
+                >
+                  {{ language.label }}
+                </option>
+              </select>
             </div>
 
             <div>

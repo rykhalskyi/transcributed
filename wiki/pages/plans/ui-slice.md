@@ -161,9 +161,7 @@ GET /api/v1/workers?project_id=<uuid>&run_id=<uuid>
       "status": "processing",
       "node": "talos-worker-2",
       "pod": "transcributed-worker-abcde",
-      "started_at": "...",
-      "attempts": 1,
-      "max_attempts": 3
+      "started_at": "..."
     }
   ]
 }
@@ -290,7 +288,7 @@ Usage rules:
 `/projects`
 
 - Project list with status chips and search.
-- Create dialog: name, description, language, output formats, max attempts.
+- Create dialog: name, description, language, and output formats.
 - Model fixed to `small` with a note about the deployed worker image.
 
 `/projects/:id`
@@ -318,7 +316,7 @@ Usage rules:
 
 `/runs/:id`
 
-- Task table with status, attempts, timings, error, artifacts, and cancel actions.
+- Task table with status, timings, error, artifacts, and cancel actions.
 - Poll only while the run is `queued` or `running`.
 
 ### Polling

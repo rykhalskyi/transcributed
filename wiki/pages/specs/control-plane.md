@@ -48,8 +48,8 @@ Run                            one explicit Start action
   the NAS is read-only input (D-08, supersedes D-07).
 - Projects are living lists: they can be edited between runs, and the item list is
   locked only while a run is queued or running (D-09).
-- Failed tasks retry through delayed queues up to `max_attempts`; terminal failures go
-  to the dead-letter queue (D-10).
+- Failed tasks are not retried automatically; terminal failures go to the
+  dead-letter queue (D-10, superseded by D-23).
 - Start fails with `503` and removes the new run when the broker is unavailable or a
   publish is not confirmed (D-11).
 
@@ -61,7 +61,7 @@ Run                            one explicit Start action
 | `projects` | named lecture lists and defaults | `name`, `status`, `defaults` |
 | `project_items` | selected lectures | `project_id`, `video_id`, `position`, `spec_overrides` |
 | `runs` | explicit executions of a project | `project_id`, `status`, `spec` |
-| `tasks` | one lecture per worker Job | `run_id`, `project_item_id`, `status`, `spec`, `attempts` |
+| `tasks` | one lecture per worker Job | `run_id`, `project_item_id`, `status`, `spec` |
 | `artifacts` | transcript outputs | `task_id`, `format`, `filename`, `content_type`, `content` |
 
 Key constraints:
@@ -111,15 +111,14 @@ Adding an item accepts a path such as `2026/spring/lecture-01.mp4`, not a file b
    reaches a terminal state.
 7. As tasks finish, derive run and project status.
 
-## Retry policy
+## Failure policy
 
-- A processing failure increments `attempts`. While `attempts < max_attempts`, the
-  task returns to `queued` and its message is republished to
-  `transcription.retry.1m` (first retry) or `transcription.retry.10m` (later retries).
-- When `attempts` reaches `max_attempts`, the task becomes `failed` and the message is
-  rejected to `transcription.dead`.
-- Retries keep the run `queued`/`running`; a terminal failure updates the run and
-  project outcome.
+- A processing failure marks the task `failed` immediately; there are no automatic
+  retries and no delayed retry queues.
+- The failed message is rejected to `transcription.dead`.
+- A task still marked `processing` when its message is redelivered (for example after
+  a worker crash) is marked `failed` rather than re-run.
+- A terminal failure updates the run and project outcome.
 
 A queue message contains only the task identity, for example:
 
