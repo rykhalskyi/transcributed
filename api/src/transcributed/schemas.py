@@ -22,7 +22,6 @@ class ProjectDefaults(BaseModel):
         default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS),
         min_length=1,
     )
-    max_attempts: int = Field(default=3, ge=1, le=10)
 
     @field_validator("output_formats")
     @classmethod
@@ -119,8 +118,6 @@ class TaskRead(BaseModel):
     status: TaskStatus
     spec: dict[str, Any]
     spec_hash: str
-    attempts: int
-    max_attempts: int
     enqueued_at: datetime | None
     started_at: datetime | None
     finished_at: datetime | None
@@ -187,8 +184,6 @@ class WorkerRead(BaseModel):
     node: str | None
     pod: str | None
     started_at: datetime | None
-    attempts: int
-    max_attempts: int
     progress: int = 0
 
 

@@ -233,18 +233,6 @@ class Task(Base, TimestampMixin):
     )
     spec: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     spec_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    attempts: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=0,
-        server_default=text("0"),
-    )
-    max_attempts: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=3,
-        server_default=text("3"),
-    )
     enqueued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
