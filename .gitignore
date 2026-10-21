@@ -16,6 +16,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# UI source lives in a directory named "lib"; keep it tracked.
+!ui/src/lib/
 parts/
 sdist/
 var/
@@ -225,3 +227,4 @@ api/data/
 
 # Downloaded Whisper models
 api/models/
+!ui/src/lib/

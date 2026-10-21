@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
+from transcributed import __version__
 from transcributed.api.routes import nas, projects, runs, tasks, workers
 from transcributed.config import get_settings
 from transcributed.db import engine
@@ -41,7 +42,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Transcributed API",
-        version="0.2.5",
+        version=__version__,
         lifespan=lifespan,
     )
     app.add_middleware(

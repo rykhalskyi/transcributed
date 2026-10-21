@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<{ variant?: Variant }>(), {
 });
 
 const sources = computed(() => {
-  //if (props.variant === "mark") return { src: mark, srcset: `${mark} 1x, ${mark2x} 2x` };
+  if (props.variant === "mark") return { src: mark, srcset: `${mark} 1x, ${mark2x} 2x` };
   if (props.variant === "wordmark") {
     return { src: wordmark, srcset: `${wordmark} 1x, ${wordmark2x} 2x` };
   }

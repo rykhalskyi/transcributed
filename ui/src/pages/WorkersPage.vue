@@ -20,14 +20,20 @@ const projectId = computed(() =>
   typeof route.query.project_id === "string" ? route.query.project_id : undefined,
 );
 
+let requestId = 0;
+
 async function load() {
+  const current = ++requestId;
   try {
-    workers.value = await listWorkers(projectId.value);
+    const response = await listWorkers(projectId.value);
+    if (current !== requestId) return;
+    workers.value = response;
     error.value = null;
   } catch (err) {
+    if (current !== requestId) return;
     error.value = messageOf(err);
   } finally {
-    loading.value = false;
+    if (current === requestId) loading.value = false;
   }
 }
 
@@ -37,7 +43,11 @@ usePolling(load, {
   immediate: true,
 });
 
-watch(projectId, load);
+watch(projectId, () => {
+  loading.value = true;
+  error.value = null;
+  void load();
+});
 
 async function cancelWorker(taskId: string) {
   if (busy.value) return;

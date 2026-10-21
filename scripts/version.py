@@ -12,7 +12,6 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATH = ROOT / "VERSION"
 PYPROJECT_PATH = ROOT / "api" / "pyproject.toml"
 INIT_PATH = ROOT / "api" / "src" / "transcributed" / "__init__.py"
-APP_PATH = ROOT / "api" / "src" / "transcributed" / "api" / "app.py"
 CHART_PATH = ROOT / "charts" / "transcributed" / "Chart.yaml"
 LOCK_PATH = ROOT / "api" / "uv.lock"
 UI_PACKAGE_PATH = ROOT / "ui" / "package.json"
@@ -83,9 +82,6 @@ def collect() -> dict[str, str]:
         "api/src/transcributed/__init__.py": regex_version(
             INIT_PATH, r'^__version__ = "([^"]+)"', "__version__"
         ),
-        "api/src/transcributed/api/app.py": regex_version(
-            APP_PATH, r"^\s*version=\"([^\"]+)\"", "FastAPI version"
-        ),
         "charts/transcributed/Chart.yaml (version)": chart_version,
         "charts/transcributed/Chart.yaml (appVersion)": chart_app_version,
         "api/uv.lock": lock_version(),
@@ -129,12 +125,15 @@ def replace_once(path: Path, pattern: str, replacement: str) -> None:
 
 
 def write_json_version(path: Path, new_version: str) -> None:
-    data = json.loads(read_text(path))
+    text = read_text(path)
+    data = json.loads(text)
     data["version"] = new_version
     packages = data.get("packages")
     if isinstance(packages, dict) and "" in packages:
         packages[""]["version"] = new_version
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    updated = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if updated != text:
+        path.write_text(updated, encoding="utf-8")
 
 
 def bump(new_version: str) -> int:
@@ -145,9 +144,6 @@ def bump(new_version: str) -> int:
     VERSION_PATH.write_text(f"{new_version}\n", encoding="utf-8")
     replace_once(PYPROJECT_PATH, r'^version = "[^"]*"', f'version = "{new_version}"')
     replace_once(INIT_PATH, r'^__version__ = "[^"]*"', f'__version__ = "{new_version}"')
-    replace_once(
-        APP_PATH, r'^(\s*version=)"[^"]*"', rf'\1"{new_version}"'
-    )
     replace_once(CHART_PATH, r"^version: .*$", f"version: {new_version}")
     replace_once(CHART_PATH, r"^appVersion: .*$", f'appVersion: "{new_version}"')
     replace_once(
