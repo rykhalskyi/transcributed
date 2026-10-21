@@ -7,7 +7,6 @@ import { usePolling } from "@/composables/usePolling";
 import { downloadArtifact } from "@/lib/api";
 import {
   addProjectItems,
-  cancelTask,
   getProject,
   listNasFiles,
   listProjectItems,
@@ -49,7 +48,6 @@ const notice = ref<string | null>(null);
 const busy = ref(false);
 const adding = ref(false);
 const downloading = ref<string | null>(null);
-const pathsText = ref("");
 const addResult = ref<ProjectItemsAddResponse | null>(null);
 
 const nasOpen = ref(false);
@@ -177,15 +175,6 @@ async function addPaths(paths: string[]): Promise<boolean> {
   }
 }
 
-async function addLectures() {
-  const paths = pathsText.value
-    .split(/\r?\n/)
-    .map((path) => path.trim())
-    .filter(Boolean);
-
-  if (await addPaths(paths)) pathsText.value = "";
-}
-
 async function toggleIncluded(item: ProjectItem) {
   await runAction(async () => {
     await setProjectItemIncluded(props.id, item.id, !item.included);
@@ -219,14 +208,6 @@ async function downloadItemArtifact(item: ProjectItem, format: string) {
   } finally {
     downloading.value = null;
   }
-}
-
-async function cancelWorker(taskId: string) {
-  if (!window.confirm("Cancel this worker's task?")) return;
-  await runAction(async () => {
-    await cancelTask(taskId);
-    await load();
-  });
 }
 
 async function openNasBrowser() {
@@ -320,6 +301,19 @@ onMounted(load);
 
         <div class="flex flex-wrap items-center gap-2">
           <RouterLink
+            v-if="workers"
+            :to="{ name: 'workers', query: { project_id: props.id } }"
+            class="inline-flex items-center gap-2 rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-text-muted transition hover:border-brand-purple/30 hover:text-brand-purple"
+            title="View workers"
+          >
+            <span
+              class="h-1.5 w-1.5 rounded-full"
+              :class="workers.active ? 'bg-brand-purple' : 'bg-text-muted'"
+            />
+            {{ workers.active }} active · {{ workers.queued }} queued
+          </RouterLink>
+          <span v-else class="text-xs text-text-muted">Workers unavailable</span>
+          <RouterLink
             v-if="latestRun"
             :to="{ name: 'run', params: { id: latestRun.id } }"
             class="btn-secondary"
@@ -370,101 +364,11 @@ onMounted(load);
       </div>
 
       <section class="card p-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 class="text-base font-bold">Workers</h2>
-            <p class="text-sm text-text-muted">
-              Active worker pods processing this project's tasks.
-            </p>
-          </div>
-          <div v-if="workers" class="flex gap-2 text-xs font-semibold">
-            <span
-              class="rounded-full border border-brand-purple/15 bg-brand-purple-soft px-2.5 py-1 text-brand-purple"
-            >
-              {{ workers.active }} active
-            </span>
-            <span
-              class="rounded-full border border-warning/20 bg-warning-soft px-2.5 py-1 text-warning"
-            >
-              {{ workers.queued }} queued
-            </span>
-          </div>
-          <span v-else class="text-xs text-text-muted">Worker status unavailable</span>
-        </div>
-
-        <div v-if="workers?.workers.length" class="mt-4 table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Worker</th>
-                <th>Node</th>
-                <th>Lecture</th>
-                <th>Progress</th>
-                <th>Started</th>
-                <th class="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="worker in workers.workers" :key="worker.task_id">
-                <td>
-                  <div class="font-semibold">
-                    {{ worker.pod || "Unknown pod" }}
-                  </div>
-                  <div class="text-xs text-text-muted">
-                    {{ worker.task_id.slice(0, 8) }}
-                  </div>
-                </td>
-                <td class="text-text-muted">{{ worker.node || "—" }}</td>
-                <td>
-                  <div class="font-semibold">{{ baseName(worker.path) }}</div>
-                  <div class="max-w-xs truncate text-xs text-text-muted">
-                    {{ worker.path }}
-                  </div>
-                </td>
-                <td class="w-32">
-                  <div class="flex items-center gap-2">
-                    <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-brand-purple-soft">
-                      <div
-                        class="h-full rounded-full bg-brand-purple transition-all"
-                        :style="{ width: `${worker.progress}%` }"
-                      />
-                    </div>
-                    <span class="text-xs font-semibold text-brand-purple">
-                      {{ worker.progress }}%
-                    </span>
-                  </div>
-                </td>
-                <td class="whitespace-nowrap text-text-muted">
-                  {{ formatDate(worker.started_at) }}
-                </td>
-                <td class="text-right">
-                  <button
-                    type="button"
-                    class="btn-ghost px-2 py-1 text-xs text-danger hover:bg-danger-soft"
-                    :disabled="busy"
-                    @click="cancelWorker(worker.task_id)"
-                  >
-                    Cancel
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p
-          v-else
-          class="mt-4 rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted"
-        >
-          No worker is processing a task right now.
-        </p>
-      </section>
-
-      <section class="card p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 class="text-base font-bold">Lectures</h2>
             <p class="text-sm text-text-muted">
-              Add explicit NAS paths; media never passes through the API.
+              Choose lectures from the NAS; media never passes through the API.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-3">
@@ -575,53 +479,30 @@ onMounted(load);
               </tr>
               <tr v-if="items.length === 0">
                 <td colspan="5" class="py-10 text-center text-sm text-text-muted">
-                  No lectures yet. Browse the NAS or add relative paths below.
+                  No lectures yet. Browse the NAS to add files.
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <form class="mt-5 border-t border-border pt-5" @submit.prevent="addLectures">
-          <label class="label" for="lecture-paths">Add lectures</label>
-          <p class="mb-2 text-xs text-text-muted">
-            One path per line, relative to the NAS root. Example:
-            <code class="rounded bg-surface-muted px-1 py-0.5"
-              >2026/spring/lecture-01.mp4</code
-            >.
-          </p>
-          <textarea
-            id="lecture-paths"
-            v-model="pathsText"
-            class="input resize-y font-mono text-xs"
-            rows="3"
-            placeholder="2026/spring/lecture-01.mp4"
-            :disabled="locked || adding"
-          />
-          <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
+          <div>
+            <h3 class="text-sm font-bold">Add lectures</h3>
             <p class="text-xs text-text-muted">
-              Paths are validated when added and again when the run starts.
+              Pick supported media files from the NAS.
             </p>
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="btn-secondary"
-                :disabled="locked || adding"
-                @click="openNasBrowser"
-              >
-                Browse NAS
-              </button>
-              <button
-                type="submit"
-                class="btn-secondary"
-                :disabled="locked || adding || !pathsText.trim()"
-              >
-                <span v-if="adding" class="spinner" />
-                Add lectures
-              </button>
-            </div>
           </div>
-        </form>
+          <button
+            type="button"
+            class="btn-secondary"
+            :disabled="locked || adding"
+            @click="openNasBrowser"
+          >
+            <span v-if="adding" class="spinner" />
+            Browse NAS
+          </button>
+        </div>
 
         <div
           v-if="addResult"
