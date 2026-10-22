@@ -92,14 +92,17 @@ def build_effective_spec(
     for output_format in output_formats:
         if output_format not in SUPPORTED_OUTPUT_FORMATS:
             raise ValidationError(f"Unsupported output format: {output_format}")
+    if not isinstance(txt_timestamps, bool):
+        raise ValidationError("txt_timestamps must be a boolean")
 
+    formats = list(dict.fromkeys(output_formats))
     return {
         "spec_version": SPEC_VERSION,
         "kind": "transcribe",
         "language": language,
         "model": model,
-        "output_formats": list(dict.fromkeys(output_formats)),
-        "txt_timestamps": bool(txt_timestamps),
+        "output_formats": formats,
+        "txt_timestamps": txt_timestamps and "txt" in formats,
     }
 
 

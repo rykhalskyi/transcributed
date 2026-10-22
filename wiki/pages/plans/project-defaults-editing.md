@@ -31,8 +31,8 @@ omitting fields silently resets them to schema defaults.
 3. Keep the run lock: disable editing while the project has an active/queued run
    and surface the API `409` if the state changes underneath.
 4. Reuse the existing create-dialog controls instead of duplicating them.
-5. Keep the model fixed at `small`, matching the creation dialog and the deployed
-   worker image.
+5. Preserve the project's existing `model` value; it is edited via the API only,
+   matching the creation dialog and the deployed worker image.
 
 ## Non-goals
 
@@ -67,8 +67,8 @@ TXT" checkbox into `ui/src/components/ProjectDefaultsForm.vue`.
     `locked` or `busy`, with an explanatory `title` while a run is active.
   - Add a modal/dialog patterned after the NAS browser dialog.
   - Seed the draft from `project.defaults` each time it opens. Include
-    `language`, `output_formats`, and `txt_timestamps`; keep
-    `model: "small"`.
+    `language`, `model`, `output_formats`, and `txt_timestamps` so saving
+    preserves the model and unrelated defaults.
   - Save sends the complete object:
     ```json
     {
@@ -129,7 +129,8 @@ validate and replace defaults atomically.
 - **Lock race:** another client can start a run between opening the dialog and
   saving. Treat `409` as expected, close or refresh, and let `load()` reflect the
   active run.
-- **Model drift:** the UI hardcodes `small`; if the worker gains configurable
+- **Model drift:** the model is read from the project and sent back unchanged,
+  but there is no model control in the dialog; if the worker gains configurable
   models later, the shared component needs a model field.
 
 
@@ -139,7 +140,9 @@ Shipped the project-page defaults editor:
 
 - `ui/src/components/ProjectDefaultsForm.vue` — shared language/format/TXT
   timestamp controls with `v-model` bindings.
-- `ui/src/lib/projectDefaults.ts` — draft conversion and full-payload helper.
+- `ui/src/lib/projectDefaults.ts` — draft conversion and full-payload helper
+  that preserves the project's model and clears `txt_timestamps` when TXT is
+  not selected.
 - `ui/src/pages/ProjectsPage.vue` — create dialog now uses the shared form.
 - `ui/src/pages/ProjectPage.vue` — **Edit defaults** button and modal, run-lock
   handling, refresh and success notice.

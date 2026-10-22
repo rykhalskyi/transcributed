@@ -11,6 +11,7 @@ import { defaultsSummary, formatDate } from "@/lib/format";
 import {
   projectDefaultsFromDraft,
   type Language,
+  type Model,
   type OutputFormat,
 } from "@/lib/projectDefaults";
 import type { Project } from "@/lib/types";
@@ -28,6 +29,7 @@ const form = reactive({
   name: "",
   description: "",
   language: "auto" as Language,
+  model: "small" as Model,
   outputFormats: ["txt"] as OutputFormat[],
   txtTimestamps: false,
 });
@@ -51,6 +53,7 @@ function resetForm() {
   form.name = "";
   form.description = "";
   form.language = "auto";
+  form.model = "small";
   form.outputFormats = ["txt"];
   form.txtTimestamps = false;
 }

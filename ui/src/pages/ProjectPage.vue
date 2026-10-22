@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import ProjectDefaultsForm from "@/components/ProjectDefaultsForm.vue";
@@ -62,6 +62,7 @@ const defaultsSaving = ref(false);
 const defaultsError = ref<string | null>(null);
 const defaultsDraft = reactive<DefaultsDraft>({
   language: "auto",
+  model: "small",
   outputFormats: ["txt"],
   txtTimestamps: false,
 });
@@ -151,6 +152,7 @@ function openDefaults() {
   if (!project.value || locked.value) return;
   const draft = defaultsFromProject(project.value.defaults);
   defaultsDraft.language = draft.language;
+  defaultsDraft.model = draft.model;
   defaultsDraft.outputFormats = draft.outputFormats;
   defaultsDraft.txtTimestamps = draft.txtTimestamps;
   defaultsError.value = null;
@@ -162,6 +164,20 @@ function closeDefaults() {
   defaultsOpen.value = false;
   defaultsError.value = null;
 }
+
+function handleDefaultsKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") closeDefaults();
+}
+
+watch(defaultsOpen, (open) => {
+  if (open) {
+    window.addEventListener("keydown", handleDefaultsKeydown);
+  } else {
+    window.removeEventListener("keydown", handleDefaultsKeydown);
+  }
+});
+
+onUnmounted(() => window.removeEventListener("keydown", handleDefaultsKeydown));
 
 async function saveDefaults() {
   if (defaultsSaving.value) return;
@@ -683,8 +699,8 @@ onMounted(load);
             <div
               class="rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs text-text-muted"
             >
-              Model: <span class="font-semibold text-brand-navy">small</span>.
-              The deployed worker image only contains this model.
+              Model: <span class="font-semibold text-brand-navy">{{ defaultsDraft.model }}</span>.
+              The model is not editable from this page.
             </div>
 
             <p

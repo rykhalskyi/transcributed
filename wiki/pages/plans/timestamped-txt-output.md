@@ -56,10 +56,12 @@ When enabled, each segment becomes one line with its start and end time:
 
 - `api/src/transcributed/schemas.py`
   - Add `txt_timestamps: bool = False` to `ProjectDefaults` (Pydantic validates
-    the type; `extra="forbid"` still rejects unknown keys).
+    the type; `extra="forbid"` still rejects unknown keys). A model validator
+    clears the flag when `txt` is not among `output_formats`.
 - `api/src/transcributed/services/spec.py`
   - Include `txt_timestamps` in the dict returned by `build_effective_spec`,
-    defaulting to `False` and coercing with `bool(...)`.
+    defaulting to `False`, rejecting non-boolean values, and forcing it to
+    `False` whenever `txt` is not among the output formats.
   - Bump `SPEC_VERSION` from `1` to `2`, since the snapshot shape changed. Old
     stored specs are not re-validated; the worker reads the new key with a
     default.
