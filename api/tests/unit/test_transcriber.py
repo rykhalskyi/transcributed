@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from transcributed.worker.transcriber import (
+    FakeTranscriber,
     FasterWhisperTranscriber,
     PermanentTaskError,
     TaskCancelled,
@@ -32,6 +33,14 @@ def test_language_code_maps_auto_to_none() -> None:
 def test_render_txt_joins_segments() -> None:
     assert render_txt(SEGMENTS) == "Hello\nWorld\n"
     assert render_txt([]) == ""
+
+
+def test_render_txt_can_include_timestamps() -> None:
+    assert render_txt(SEGMENTS, timestamps=True) == (
+        "[00:00:00.000 --> 00:00:01.500] Hello\n"
+        "[01:01:01.250 --> 01:01:02.500] World\n"
+    )
+    assert render_txt([], timestamps=True) == ""
 
 
 def test_render_vtt_formats_timestamps() -> None:
@@ -94,6 +103,27 @@ def test_faster_whisper_transcriber_maps_spec_and_renders(
     assert json.loads(files["json"])["language"] == "ru"
 
 
+def test_faster_whisper_transcriber_renders_timestamped_txt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcriber = FasterWhisperTranscriber()
+    monkeypatch.setattr(transcriber, "_load_model", lambda _: FakeModel())
+    monkeypatch.setattr(transcriber, "_decode_audio", lambda _: [0.0])
+
+    files = transcriber.transcribe(
+        tmp_path / "lecture.mp4",
+        {
+            "model": "small",
+            "language": "en",
+            "output_formats": ["txt"],
+            "txt_timestamps": True,
+        },
+    )
+
+    assert files["txt"] == "[00:00:00.000 --> 00:00:01.250] hello\n"
+
+
 def test_faster_whisper_transcriber_writes_only_requested_formats(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -141,6 +171,17 @@ def test_faster_whisper_transcriber_uses_worker_vad_setting(
     )
 
     assert model.kwargs["vad_filter"] is False
+
+
+def test_fake_transcriber_renders_timestamped_txt(tmp_path: Path) -> None:
+    files = FakeTranscriber().transcribe(
+        tmp_path / "lecture.mp4",
+        {"output_formats": ["txt"], "txt_timestamps": True},
+    )
+
+    assert files["txt"].startswith(
+        "[00:00:00.000 --> 00:00:05.000] [Fake transcript"
+    )
 
 
 def test_faster_whisper_transcriber_rejects_model_missing_from_image(

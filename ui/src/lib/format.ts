@@ -35,7 +35,9 @@ export function defaultsSummary(defaults: Record<string, unknown>): string {
   const language = String(defaults.language ?? "auto");
   const model = String(defaults.model ?? "small");
   const formats = Array.isArray(defaults.output_formats)
-    ? defaults.output_formats.join(", ")
-    : "txt";
-  return `${language.toUpperCase()} · ${model} · ${formats}`;
+    ? defaults.output_formats.map((format) =>
+        format === "txt" && defaults.txt_timestamps ? "txt (timestamps)" : format,
+      )
+    : ["txt"];
+  return `${language.toUpperCase()} · ${model} · ${formats.join(", ")}`;
 }

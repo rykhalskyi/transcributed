@@ -5,6 +5,7 @@ import type {
   ProjectCreate,
   ProjectItem,
   ProjectItemsAddResponse,
+  ProjectUpdate,
   Run,
   RunDetail,
   StartProjectResponse,
@@ -108,6 +109,18 @@ export async function getProject(projectId: string): Promise<Project> {
   return unwrap(
     await api.GET("/api/v1/projects/{project_id}", {
       params: { path: { project_id: projectId } },
+    }),
+  );
+}
+
+export async function updateProject(
+  projectId: string,
+  body: ProjectUpdate,
+): Promise<Project> {
+  return unwrap(
+    await api.PATCH("/api/v1/projects/{project_id}", {
+      params: { path: { project_id: projectId } },
+      body,
     }),
   );
 }

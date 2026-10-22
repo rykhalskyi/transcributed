@@ -13,5 +13,7 @@
 
 ## Plans
 - [plans/nas-folder-picking](pages/plans/nas-folder-picking.md) — Recursive NAS folder browsing and batch lecture picking across directory trees.
+- [plans/project-defaults-editing](pages/plans/project-defaults-editing.md) — Edit transcription defaults, including txt_timestamps, from the project page instead of the API only.
+- [plans/timestamped-txt-output](pages/plans/timestamped-txt-output.md) — Optional per-project timecodes in plain TXT transcripts, without adding a new output format.
 - [plans/ui-slice](pages/plans/ui-slice.md) — Vue 3 white-themed LAN UI for projects, NAS file selection, runs, workers, and transcript downloads.
 - [plans/worker-slice](pages/plans/worker-slice.md) — Phased plan for the real Faster Whisper worker, container image, Kubernetes Jobs/KEDA, and end-to-end verification.

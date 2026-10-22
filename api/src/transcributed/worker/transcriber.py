@@ -48,8 +48,18 @@ def _timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}.{milliseconds:03d}"
 
 
-def render_txt(segments: Sequence[TranscriptSegment]) -> str:
-    lines = [segment.text for segment in segments]
+def render_txt(
+    segments: Sequence[TranscriptSegment],
+    *,
+    timestamps: bool = False,
+) -> str:
+    if timestamps:
+        lines = [
+            f"[{_timestamp(segment.start)} --> {_timestamp(segment.end)}] {segment.text}"
+            for segment in segments
+        ]
+    else:
+        lines = [segment.text for segment in segments]
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -279,7 +289,10 @@ class FasterWhisperTranscriber:
         if "json" in formats:
             files["json"] = render_json(segments, detected_language)
         if "txt" in formats:
-            files["txt"] = render_txt(segments)
+            files["txt"] = render_txt(
+                segments,
+                timestamps=bool(spec.get("txt_timestamps", False)),
+            )
         return files
 
 
@@ -313,6 +326,9 @@ class FakeTranscriber:
             )
 
         if "txt" in formats:
-            files["txt"] = f"{text}\n"
+            files["txt"] = render_txt(
+                [TranscriptSegment(start=0.0, end=5.0, text=text)],
+                timestamps=bool(spec.get("txt_timestamps", False)),
+            )
 
         return files

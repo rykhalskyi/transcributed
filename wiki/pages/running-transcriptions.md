@@ -67,7 +67,8 @@ PROJECT=$(curl -sS $RESOLVE -X POST "$BASE/api/v1/projects" \
     "defaults": {
       "language": "ru",
       "model": "small",
-      "output_formats": ["txt", "vtt", "json"]
+      "output_formats": ["txt", "vtt", "json"],
+      "txt_timestamps": true
     }
   }')
 echo "$PROJECT" | jq '{id, name, status, defaults}'
@@ -130,7 +131,18 @@ curl -sS $RESOLVE -X POST "$BASE/api/v1/projects" \
 ```
 
 `defaults` is optional; the defaults are `language: auto`, `model: small`,
-`output_formats: ["txt"]`.
+`output_formats: ["txt"]`, and `txt_timestamps: false`.
+
+Set `txt_timestamps: true` to prefix every TXT segment with its source range:
+
+```text
+[00:00:00.000 --> 00:00:02.480] Welcome to the lecture.
+[00:00:02.480 --> 00:00:07.120] Today we cover ...
+```
+
+The flag only affects `txt`; VTT and JSON already contain segment timings.
+Existing projects can be updated from the project page with **Edit defaults**,
+or with `PATCH /api/v1/projects/{id}`. Changes apply to future runs only.
 
 ### 2. Add lectures
 
@@ -205,7 +217,7 @@ curl -sS $RESOLVE -OJ "$BASE/api/v1/tasks/$TASK_ID/files/metadata"
 
 | Format | What it contains |
 |--------|------------------|
-| `txt` | plain text, one segment per line |
+| `txt` | plain text, one segment per line; optional `[start --> end]` prefix per line when `txt_timestamps` is enabled |
 | `vtt` | WebVTT with start/end timestamps |
 | `json` | detected `language`, full `text`, and timed `segments` |
 | `metadata` | task/run/model/worker/elapsed-time details |
@@ -295,7 +307,8 @@ sequenceDiagram
 - **Model:** `small` only. The worker image has `WHISPER_MODEL=small` and
   `WHISPER_LOCAL_FILES_ONLY=true`.
 - **Language:** `auto`, `en`, `ru`, or `de` (default `auto`).
-- **Outputs:** `txt`, `vtt`, `json` (default `txt`).
+- **Outputs:** `txt`, `vtt`, `json` (default `txt`). `txt_timestamps` (default
+  `false`) adds `[HH:MM:SS.mmm --> HH:MM:SS.mmm]` prefixes to TXT lines.
 - **Retries:** none. A failed task is marked `failed` immediately and its message
   goes to `transcription.dead`; a task left `processing` by a dead worker is marked
   `failed` when its message is redelivered.

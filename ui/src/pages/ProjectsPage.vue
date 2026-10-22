@@ -3,14 +3,18 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import EmptyState from "@/components/EmptyState.vue";
+import ProjectDefaultsForm from "@/components/ProjectDefaultsForm.vue";
 import StatusBadge from "@/components/StatusBadge.vue";
 import { createProject, listProjects } from "@/lib/endpoints";
 import { messageOf } from "@/lib/errors";
 import { defaultsSummary, formatDate } from "@/lib/format";
+import {
+  projectDefaultsFromDraft,
+  type Language,
+  type Model,
+  type OutputFormat,
+} from "@/lib/projectDefaults";
 import type { Project } from "@/lib/types";
-
-type Language = "en" | "ru" | "de" | "auto";
-type OutputFormat = "txt" | "vtt" | "json";
 
 const router = useRouter();
 
@@ -25,21 +29,10 @@ const form = reactive({
   name: "",
   description: "",
   language: "auto" as Language,
+  model: "small" as Model,
   outputFormats: ["txt"] as OutputFormat[],
+  txtTimestamps: false,
 });
-
-const formats: { value: OutputFormat; label: string }[] = [
-  { value: "txt", label: "TXT" },
-  { value: "vtt", label: "VTT" },
-  { value: "json", label: "JSON" },
-];
-
-const languages: { value: Language; label: string }[] = [
-  { value: "auto", label: "Auto-detect" },
-  { value: "en", label: "English" },
-  { value: "ru", label: "Russian" },
-  { value: "de", label: "German" },
-];
 
 const canSubmit = computed(
   () => form.name.trim().length > 0 && form.outputFormats.length > 0,
@@ -60,7 +53,9 @@ function resetForm() {
   form.name = "";
   form.description = "";
   form.language = "auto";
+  form.model = "small";
   form.outputFormats = ["txt"];
+  form.txtTimestamps = false;
 }
 
 function openDialog() {
@@ -74,15 +69,6 @@ function closeDialog() {
   dialogOpen.value = false;
 }
 
-function toggleFormat(format: OutputFormat) {
-  if (form.outputFormats.includes(format)) {
-    if (form.outputFormats.length === 1) return;
-    form.outputFormats = form.outputFormats.filter((item) => item !== format);
-    return;
-  }
-  form.outputFormats = [...form.outputFormats, format];
-}
-
 async function submit() {
   if (!canSubmit.value || submitting.value) return;
   submitting.value = true;
@@ -91,11 +77,7 @@ async function submit() {
     const project = await createProject({
       name: form.name.trim(),
       description: form.description.trim() || null,
-      defaults: {
-        language: form.language,
-        model: "small",
-        output_formats: form.outputFormats,
-      },
+      defaults: projectDefaultsFromDraft(form),
     });
     dialogOpen.value = false;
     resetForm();
@@ -227,42 +209,13 @@ onMounted(load);
               />
             </div>
 
-            <div>
-              <label class="label" for="project-language">Language</label>
-              <select id="project-language" v-model="form.language" class="input">
-                <option
-                  v-for="language in languages"
-                  :key="language.value"
-                  :value="language.value"
-                >
-                  {{ language.label }}
-                </option>
-              </select>
-            </div>
-
-            <div>
-              <span class="label">Output formats</span>
-              <div class="flex flex-wrap gap-2">
-                <label
-                  v-for="format in formats"
-                  :key="format.value"
-                  class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition"
-                  :class="
-                    form.outputFormats.includes(format.value)
-                      ? 'border-brand-purple/30 bg-brand-purple-soft text-brand-purple'
-                      : 'border-border bg-white text-brand-navy hover:border-brand-purple/30'
-                  "
-                >
-                  <input
-                    type="checkbox"
-                    class="sr-only"
-                    :checked="form.outputFormats.includes(format.value)"
-                    @change="toggleFormat(format.value)"
-                  />
-                  {{ format.label }}
-                </label>
-              </div>
-            </div>
+            <ProjectDefaultsForm
+              v-model:language="form.language"
+              v-model:output-formats="form.outputFormats"
+              v-model:txt-timestamps="form.txtTimestamps"
+              id-prefix="new-project"
+              :disabled="submitting"
+            />
 
             <div
               class="rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs text-text-muted"

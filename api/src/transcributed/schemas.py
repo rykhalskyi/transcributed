@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from transcributed.enums import ProjectStatus, RunStatus, TaskStatus
 
@@ -22,11 +22,18 @@ class ProjectDefaults(BaseModel):
         default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS),
         min_length=1,
     )
+    txt_timestamps: bool = False
 
     @field_validator("output_formats")
     @classmethod
     def deduplicate_formats(cls, values: list[OutputFormat]) -> list[OutputFormat]:
         return list(dict.fromkeys(values))
+
+    @model_validator(mode="after")
+    def clear_txt_timestamps_without_txt(self) -> ProjectDefaults:
+        if "txt" not in self.output_formats:
+            self.txt_timestamps = False
+        return self
 
 
 class ProjectCreate(BaseModel):

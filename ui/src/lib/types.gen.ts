@@ -377,6 +377,11 @@ export interface components {
             model: "tiny" | "base" | "small" | "medium" | "large-v3";
             /** Output Formats */
             output_formats?: ("vtt" | "json" | "txt")[];
+            /**
+             * Txt Timestamps
+             * @default false
+             */
+            txt_timestamps?: boolean;
         };
         /** ProjectItemInput */
         ProjectItemInput: {

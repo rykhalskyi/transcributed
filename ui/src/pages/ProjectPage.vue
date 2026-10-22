@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import ProjectDefaultsForm from "@/components/ProjectDefaultsForm.vue";
 import StatusBadge from "@/components/StatusBadge.vue";
 import { usePolling } from "@/composables/usePolling";
 import { downloadArtifact } from "@/lib/api";
@@ -15,6 +16,7 @@ import {
   removeProjectItem,
   setProjectItemIncluded,
   startProject,
+  updateProject,
 } from "@/lib/endpoints";
 import { messageOf } from "@/lib/errors";
 import {
@@ -24,6 +26,11 @@ import {
   formatDate,
   transcriptFilename,
 } from "@/lib/format";
+import {
+  defaultsFromProject,
+  projectDefaultsFromDraft,
+  type DefaultsDraft,
+} from "@/lib/projectDefaults";
 import { isLiveStatus } from "@/lib/status";
 import type {
   NasListing,
@@ -49,6 +56,16 @@ const busy = ref(false);
 const adding = ref(false);
 const downloading = ref<string | null>(null);
 const addResult = ref<ProjectItemsAddResponse | null>(null);
+
+const defaultsOpen = ref(false);
+const defaultsSaving = ref(false);
+const defaultsError = ref<string | null>(null);
+const defaultsDraft = reactive<DefaultsDraft>({
+  language: "auto",
+  model: "small",
+  outputFormats: ["txt"],
+  txtTimestamps: false,
+});
 
 const nasOpen = ref(false);
 const nasLoading = ref(false);
@@ -129,6 +146,56 @@ function flash(message: string) {
   window.setTimeout(() => {
     if (notice.value === message) notice.value = null;
   }, 4000);
+}
+
+function openDefaults() {
+  if (!project.value || locked.value) return;
+  const draft = defaultsFromProject(project.value.defaults);
+  defaultsDraft.language = draft.language;
+  defaultsDraft.model = draft.model;
+  defaultsDraft.outputFormats = draft.outputFormats;
+  defaultsDraft.txtTimestamps = draft.txtTimestamps;
+  defaultsError.value = null;
+  defaultsOpen.value = true;
+}
+
+function closeDefaults() {
+  if (defaultsSaving.value) return;
+  defaultsOpen.value = false;
+  defaultsError.value = null;
+}
+
+function handleDefaultsKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") closeDefaults();
+}
+
+watch(defaultsOpen, (open) => {
+  if (open) {
+    window.addEventListener("keydown", handleDefaultsKeydown);
+  } else {
+    window.removeEventListener("keydown", handleDefaultsKeydown);
+  }
+});
+
+onUnmounted(() => window.removeEventListener("keydown", handleDefaultsKeydown));
+
+async function saveDefaults() {
+  if (defaultsSaving.value) return;
+  defaultsSaving.value = true;
+  defaultsError.value = null;
+  try {
+    await updateProject(props.id, {
+      defaults: projectDefaultsFromDraft(defaultsDraft),
+    });
+    defaultsOpen.value = false;
+    await load();
+    flash("Defaults updated.");
+  } catch (err) {
+    defaultsError.value = messageOf(err);
+    await load();
+  } finally {
+    defaultsSaving.value = false;
+  }
 }
 
 async function runAction(action: () => Promise<void>) {
@@ -313,6 +380,19 @@ onMounted(load);
             {{ workers.active }} active · {{ workers.queued }} queued
           </RouterLink>
           <span v-else class="text-xs text-text-muted">Workers unavailable</span>
+          <button
+            type="button"
+            class="btn-secondary"
+            :disabled="locked || busy"
+            :title="
+              locked
+                ? 'A run is active'
+                : 'Edit transcription defaults for future runs'
+            "
+            @click="openDefaults"
+          >
+            Edit defaults
+          </button>
           <RouterLink
             v-if="latestRun"
             :to="{ name: 'run', params: { id: latestRun.id } }"
@@ -574,6 +654,85 @@ onMounted(load);
       </p>
       <RouterLink to="/projects" class="btn-secondary mt-5">Back to projects</RouterLink>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="defaultsOpen"
+        class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-navy/40 p-4"
+        @click.self="closeDefaults"
+      >
+        <div
+          class="card my-8 w-full max-w-lg p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-defaults-title"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="edit-defaults-title" class="text-lg font-bold">
+                Edit defaults
+              </h2>
+              <p class="mt-1 text-sm text-text-muted">
+                These apply to future runs; existing transcripts keep their
+                settings.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="btn-ghost -mr-2 -mt-2 px-2 py-1 text-xl leading-none"
+              aria-label="Close"
+              @click="closeDefaults"
+            >
+              ×
+            </button>
+          </div>
+
+          <form class="mt-5 space-y-4" @submit.prevent="saveDefaults">
+            <ProjectDefaultsForm
+              v-model:language="defaultsDraft.language"
+              v-model:output-formats="defaultsDraft.outputFormats"
+              v-model:txt-timestamps="defaultsDraft.txtTimestamps"
+              id-prefix="edit-project"
+              :disabled="defaultsSaving || locked"
+            />
+
+            <div
+              class="rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs text-text-muted"
+            >
+              Model: <span class="font-semibold text-brand-navy">{{ defaultsDraft.model }}</span>.
+              The model is not editable from this page.
+            </div>
+
+            <p
+              v-if="defaultsError"
+              class="rounded-lg border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger"
+              role="alert"
+            >
+              {{ defaultsError }}
+            </p>
+
+            <div class="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                class="btn-secondary"
+                :disabled="defaultsSaving"
+                @click="closeDefaults"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn-primary"
+                :disabled="defaultsSaving || locked"
+              >
+                <span v-if="defaultsSaving" class="spinner-light" />
+                Save defaults
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div

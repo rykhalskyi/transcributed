@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from transcributed.errors import ValidationError
+from transcributed.schemas import ProjectDefaults
 from transcributed.services.spec import (
     build_effective_spec,
     resolve_input_path,
@@ -54,7 +55,33 @@ def test_build_effective_spec_merges_overrides() -> None:
     assert spec["language"] == "de"
     assert spec["model"] == "small"
     assert spec["output_formats"] == ["vtt"]
+    assert spec["txt_timestamps"] is False
     assert spec["kind"] == "transcribe"
+
+
+def test_build_effective_spec_preserves_txt_timestamps() -> None:
+    spec = build_effective_spec({"txt_timestamps": True})
+
+    assert spec["txt_timestamps"] is True
+
+
+def test_build_effective_spec_clears_txt_timestamps_without_txt() -> None:
+    spec = build_effective_spec(
+        {"output_formats": ["vtt"], "txt_timestamps": True}
+    )
+
+    assert spec["txt_timestamps"] is False
+
+
+def test_build_effective_spec_rejects_non_boolean_txt_timestamps() -> None:
+    with pytest.raises(ValidationError):
+        build_effective_spec({"txt_timestamps": "yes"})
+
+
+def test_project_defaults_clear_txt_timestamps_without_txt() -> None:
+    defaults = ProjectDefaults(output_formats=["vtt"], txt_timestamps=True)
+
+    assert defaults.txt_timestamps is False
 
 
 def test_build_effective_spec_rejects_unknown_language() -> None:
