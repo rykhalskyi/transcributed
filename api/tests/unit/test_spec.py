@@ -54,7 +54,14 @@ def test_build_effective_spec_merges_overrides() -> None:
     assert spec["language"] == "de"
     assert spec["model"] == "small"
     assert spec["output_formats"] == ["vtt"]
+    assert spec["txt_timestamps"] is False
     assert spec["kind"] == "transcribe"
+
+
+def test_build_effective_spec_preserves_txt_timestamps() -> None:
+    spec = build_effective_spec({"txt_timestamps": True})
+
+    assert spec["txt_timestamps"] is True
 
 
 def test_build_effective_spec_rejects_unknown_language() -> None:

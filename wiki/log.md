@@ -19,3 +19,5 @@
 ## [2026-10-20] update | UI slice — Vue scaffold, smoke test, and backend UI APIs (NAS browse, workers, item artifacts, CORS)
 ## [2026-10-20] update | UI slice — per-task progress API, worker reporting, progress bars, and explicit transcript download buttons
 ## [2026-10-21] plan | Plan recursive NAS folder and subfolder picking for lectures
+## [2026-10-22] plan | Timestamped TXT output
+## [2026-10-22] update | Timestamped TXT output — implemented

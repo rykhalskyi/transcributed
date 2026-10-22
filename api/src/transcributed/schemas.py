@@ -22,6 +22,7 @@ class ProjectDefaults(BaseModel):
         default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS),
         min_length=1,
     )
+    txt_timestamps: bool = False
 
     @field_validator("output_formats")
     @classmethod

@@ -13,7 +13,7 @@ from transcributed.schemas import ProjectDefaults
 SUPPORTED_LANGUAGES = frozenset({"en", "ru", "de", "auto"})
 SUPPORTED_MODELS = frozenset({"tiny", "base", "small", "medium", "large-v3"})
 SUPPORTED_OUTPUT_FORMATS = frozenset({"vtt", "json", "txt"})
-SPEC_VERSION = 1
+SPEC_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -81,6 +81,7 @@ def build_effective_spec(
     language = base.get("language", "auto")
     model = base.get("model", "small")
     output_formats = base.get("output_formats", ["txt"])
+    txt_timestamps = base.get("txt_timestamps", False)
 
     if language not in SUPPORTED_LANGUAGES:
         raise ValidationError(f"Unsupported language: {language}")
@@ -98,6 +99,7 @@ def build_effective_spec(
         "language": language,
         "model": model,
         "output_formats": list(dict.fromkeys(output_formats)),
+        "txt_timestamps": bool(txt_timestamps),
     }
 
 

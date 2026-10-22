@@ -113,6 +113,41 @@ def test_only_requested_formats_are_written(
     assert response.text.startswith("WEBVTT")
 
 
+def test_txt_timestamps_defaults_are_rendered(
+    client: TestClient,
+    sample_video: str,
+) -> None:
+    response = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "Timestamped TXT",
+            "defaults": {"output_formats": ["txt"], "txt_timestamps": True},
+        },
+    )
+    assert response.status_code == 201
+    project_id = response.json()["id"]
+
+    client.post(
+        f"/api/v1/projects/{project_id}/items",
+        json={"items": [{"path": sample_video}]},
+    )
+    start = client.post(f"/api/v1/projects/{project_id}/start").json()
+    task_id = start["task_ids"][0]
+
+    async def run_worker() -> None:
+        async with SessionLocal() as session:
+            await process_task(session, UUID(task_id), transcriber=FakeTranscriber())
+
+    asyncio.run(run_worker())
+
+    task = client.get(f"/api/v1/tasks/{task_id}").json()
+    assert task["spec"]["txt_timestamps"] is True
+
+    response = client.get(f"/api/v1/tasks/{task_id}/files/txt")
+    assert response.status_code == 200
+    assert response.text.startswith("[00:00:00.000 --> 00:00:05.000] ")
+
+
 def test_add_items_reports_invalid_paths(
     client: TestClient,
     sample_video: str,

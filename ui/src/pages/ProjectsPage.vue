@@ -26,6 +26,7 @@ const form = reactive({
   description: "",
   language: "auto" as Language,
   outputFormats: ["txt"] as OutputFormat[],
+  txtTimestamps: false,
 });
 
 const formats: { value: OutputFormat; label: string }[] = [
@@ -61,6 +62,7 @@ function resetForm() {
   form.description = "";
   form.language = "auto";
   form.outputFormats = ["txt"];
+  form.txtTimestamps = false;
 }
 
 function openDialog() {
@@ -78,6 +80,7 @@ function toggleFormat(format: OutputFormat) {
   if (form.outputFormats.includes(format)) {
     if (form.outputFormats.length === 1) return;
     form.outputFormats = form.outputFormats.filter((item) => item !== format);
+    if (format === "txt") form.txtTimestamps = false;
     return;
   }
   form.outputFormats = [...form.outputFormats, format];
@@ -95,6 +98,7 @@ async function submit() {
         language: form.language,
         model: "small",
         output_formats: form.outputFormats,
+        txt_timestamps: form.txtTimestamps,
       },
     });
     dialogOpen.value = false;
@@ -262,6 +266,17 @@ onMounted(load);
                   {{ format.label }}
                 </label>
               </div>
+              <label
+                v-if="form.outputFormats.includes('txt')"
+                class="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-text-muted"
+              >
+                <input
+                  v-model="form.txtTimestamps"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-border text-brand-purple focus:ring-brand-purple"
+                />
+                Include timestamps in TXT
+              </label>
             </div>
 
             <div
