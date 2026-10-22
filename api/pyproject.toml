@@ -1,6 +1,6 @@
 [project]
 name = "transcributed"
-version = "0.2.5"
+version = "0.2.6"
 description = "Self-hosted lecture transcription control plane"
 readme = "README.md"
 authors = [
