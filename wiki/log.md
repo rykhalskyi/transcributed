@@ -21,3 +21,5 @@
 ## [2026-10-21] plan | Plan recursive NAS folder and subfolder picking for lectures
 ## [2026-10-22] plan | Timestamped TXT output
 ## [2026-10-22] update | Timestamped TXT output — implemented
+## [2026-10-22] plan | Project defaults editing in the UI
+## [2026-10-22] update | Project defaults editing — implemented

@@ -138,10 +138,10 @@ When enabled, each segment becomes one line with its start and end time:
   Nothing currently deduplicates on the hash, so this is harmless.
 - **Mixed deployments:** an old worker ignores `txt_timestamps`; a new worker
   treats a missing key as `false`. Rolling API/worker upgrades are safe.
-- **UI-only creation:** the UI still sets project defaults only at creation time.
-  Changing the option afterwards remains API-only via
-  `PATCH /api/v1/projects/{id}`. Exposing a project-settings editor is a separate
-  ticket.
+- **UI-only creation:** the UI sets project defaults only at creation time.
+  Changing the option afterwards is API-only via
+  `PATCH /api/v1/projects/{id}` until
+  [project defaults editing](project-defaults-editing.md) lands.
 - **Readability:** long ranges repeat on every line. If that proves noisy, a
   start-only variant can be added later without another schema change.
 

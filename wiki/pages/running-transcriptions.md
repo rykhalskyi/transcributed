@@ -141,8 +141,8 @@ Set `txt_timestamps: true` to prefix every TXT segment with its source range:
 ```
 
 The flag only affects `txt`; VTT and JSON already contain segment timings.
-Existing projects can be updated with `PATCH /api/v1/projects/{id}`; the UI
-exposes the option when creating a project.
+Existing projects can be updated from the project page with **Edit defaults**,
+or with `PATCH /api/v1/projects/{id}`. Changes apply to future runs only.
 
 ### 2. Add lectures
 

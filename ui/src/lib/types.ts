@@ -2,6 +2,7 @@ import type { components } from "./types.gen";
 
 export type Project = components["schemas"]["ProjectRead"];
 export type ProjectCreate = components["schemas"]["ProjectCreate"];
+export type ProjectUpdate = components["schemas"]["ProjectUpdate"];
 export type ProjectDefaults = components["schemas"]["ProjectDefaults"];
 export type ProjectItem = components["schemas"]["ProjectItemRead"];
 export type ProjectItemsAddResponse =
