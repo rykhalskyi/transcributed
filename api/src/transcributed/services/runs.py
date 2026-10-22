@@ -211,10 +211,16 @@ async def get_run(session: AsyncSession, run_id: UUID) -> Run:
     run = await session.scalar(
         select(Run)
         .where(Run.id == run_id)
-        .options(selectinload(Run.tasks).selectinload(Task.artifacts))
+        .options(
+            selectinload(Run.tasks).options(
+                selectinload(Task.artifacts),
+                selectinload(Task.project_item),
+            )
+        )
     )
     if run is None:
         raise NotFoundError("Run not found")
+    run.tasks.sort(key=lambda task: task.project_item.position)
     return run
 
 
