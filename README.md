@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/logo.png" alt="Transcributed logo" width="180">
+  <img src="docs/img/logo.jpg" alt="Transcributed logo" width="180">
 </p>
 
 <h1 align="center">Transcributed</h1>
@@ -7,12 +7,12 @@
 <p align="center"><b>Your lectures, transcribed on your own hardware.</b></p>
 
 <p align="center">
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white">
-  <img alt="FastAPI" src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white">
-  <img alt="Vue 3" src="https://img.shields.io/badge/UI-Vue%203-42B883?logo=vuedotjs&logoColor=white">
-  <img alt="Faster Whisper" src="https://img.shields.io/badge/ASR-Faster%20Whisper-6E56CF">
-  <img alt="Kubernetes" src="https://img.shields.io/badge/Runtime-Kubernetes-326CE5?logo=kubernetes&logoColor=white">
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-012561">
+  <a href="https://www.python.org/"><img alt="Python 3.14" src="https://img.shields.io/badge/Python-3.14-3776AB?logo=python&amp;logoColor=white"></a>
+  <a href="https://fastapi.tiangolo.com/"><img alt="FastAPI" src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&amp;logoColor=white"></a>
+  <a href="https://vuejs.org/"><img alt="Vue 3" src="https://img.shields.io/badge/UI-Vue%203-42B883?logo=vuedotjs&amp;logoColor=white"></a>
+  <a href="https://github.com/SYSTRAN/faster-whisper"><img alt="Faster Whisper" src="https://img.shields.io/badge/ASR-Faster%20Whisper-6E56CF"></a>
+  <a href="https://kubernetes.io/"><img alt="Kubernetes" src="https://img.shields.io/badge/Runtime-Kubernetes-326CE5?logo=kubernetes&amp;logoColor=white"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-012561"></a>
 </p>
 
 **Transcributed is a self-hosted lecture transcription system that turns recordings stored on a NAS into clean, downloadable text.**
