@@ -26,7 +26,7 @@ Create a project, pick the lectures you want, and start a run. Transcributed sna
 - **Project-based lecture lists** — save a course as a project, browse the NAS, and add the files you want.
 - **One task per lecture** — each recording is an isolated queue message and worker Job.
 - **Queue-driven scaling** — KEDA creates a worker Job for each queued lecture.
-- **Frame extraction workflow** — attach a per-video timecode file and download original-resolution PNG frames as a ZIP bundle.
+- **Frame extraction workflow** — upload a per-video timecode file and download original-resolution PNG frames as a ZIP bundle.
 - **Two worker types** — Faster Whisper transcription and ffmpeg frame extraction run on separate queues and images.
 - **Multiple output formats** — plain text, WebVTT, JSON with timed segments, and metadata.
 - **Optional timestamps in TXT** — prefix every line with its source time range.

@@ -341,6 +341,11 @@ export interface components {
              */
             created_at: string;
         };
+        /** Body_attach_timecode_file_api_v1_projects__project_id__items__item_id__timecode_put */
+        Body_attach_timecode_file_api_v1_projects__project_id__items__item_id__timecode_put: {
+            /** File */
+            file: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -456,12 +461,10 @@ export interface components {
             spec_overrides: {
                 [key: string]: unknown;
             } | null;
-            /** Timecode Path */
-            timecode_path?: string | null;
+            /** Timecode Filename */
+            timecode_filename?: string | null;
             /** Timecode Count */
             timecode_count?: number | null;
-            /** Timecode Status */
-            timecode_status?: ("ok" | "missing" | "changed") | null;
             latest_task_status?: components["schemas"]["TaskStatus"] | null;
             /** Latest Task Id */
             latest_task_id?: string | null;
@@ -705,11 +708,6 @@ export interface components {
          * @enum {string}
          */
         TaskStatus: "queued" | "processing" | "succeeded" | "failed" | "cancelled";
-        /** TimecodeAttachRequest */
-        TimecodeAttachRequest: {
-            /** Path */
-            path: string;
-        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1092,7 +1090,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TimecodeAttachRequest"];
+                "multipart/form-data": components["schemas"]["Body_attach_timecode_file_api_v1_projects__project_id__items__item_id__timecode_put"];
             };
         };
         responses: {

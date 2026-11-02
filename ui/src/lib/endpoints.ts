@@ -1,4 +1,4 @@
-import { api, ApiError, request } from "./api";
+import { api, ApiError, apiOrigin, request } from "./api";
 import type {
   NasListing,
   Project,
@@ -176,14 +176,28 @@ export async function removeProjectItem(
 export async function attachTimecodeFile(
   projectId: string,
   itemId: string,
-  path: string,
+  file: File,
 ): Promise<ProjectItem> {
-  return unwrap(
-    await api.PUT("/api/v1/projects/{project_id}/items/{item_id}/timecode", {
-      params: { path: { project_id: projectId, item_id: itemId } },
-      body: { path },
-    }),
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(
+    `${apiOrigin}/api/v1/projects/${projectId}/items/${itemId}/timecode`,
+    { method: "PUT", body: formData },
   );
+  if (!response.ok) {
+    let error: unknown = null;
+    try {
+      error = await response.json();
+    } catch {
+      error = null;
+    }
+    throw new ApiError(
+      messageFromError(error, response.status),
+      response.status,
+      error,
+    );
+  }
+  return (await response.json()) as ProjectItem;
 }
 
 export async function removeTimecodeFile(

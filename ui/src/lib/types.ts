@@ -19,7 +19,6 @@ export type Worker = components["schemas"]["WorkerRead"];
 export type WorkersResponse = components["schemas"]["WorkersResponse"];
 
 export type Workflow = components["schemas"]["Workflow"];
-export type TimecodeStatus = "ok" | "missing" | "changed";
 
 export type TaskStatus = Task["status"];
 export type RunStatus = Run["status"];

@@ -78,9 +78,6 @@ class ProjectItemsAddRequest(BaseModel):
     items: list[ProjectItemInput] = Field(min_length=1)
 
 
-class TimecodeAttachRequest(BaseModel):
-    path: str = Field(min_length=1, max_length=1024)
-
 
 class ProjectItemResult(BaseModel):
     path: str
@@ -115,9 +112,8 @@ class ProjectItemRead(BaseModel):
     position: int
     included: bool
     spec_overrides: dict[str, Any] | None
-    timecode_path: str | None = None
+    timecode_filename: str | None = None
     timecode_count: int | None = None
-    timecode_status: Literal["ok", "missing", "changed"] | None = None
     latest_task_status: TaskStatus | None = None
     latest_task_id: UUID | None = None
     latest_task_progress: int | None = None

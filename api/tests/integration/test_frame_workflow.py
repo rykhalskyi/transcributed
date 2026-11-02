@@ -1,6 +1,5 @@
 import asyncio
 import io
-import os
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -67,21 +66,40 @@ def _add_videos(client: TestClient, project_id: str, paths: list[str]) -> list[d
     return client.get(f"/api/v1/projects/{project_id}/items").json()
 
 
+def _upload_timecode(
+    client: TestClient,
+    project_id: str,
+    item_id: str,
+    filename: str,
+    content: str,
+) -> dict:
+    response = client.put(
+        f"/api/v1/projects/{project_id}/items/{item_id}/timecode",
+        files={"file": (filename, content, "text/plain")},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def _attach_timecodes(
     client: TestClient,
     project_id: str,
     items: list[dict],
     timecodes: list[str],
 ) -> None:
-    for item, path in zip(items, timecodes, strict=True):
-        response = client.put(
-            f"/api/v1/projects/{project_id}/items/{item['id']}/timecode",
-            json={"path": path},
+    for index, (item, content) in enumerate(
+        zip(items, timecodes, strict=True),
+        start=1,
+    ):
+        body = _upload_timecode(
+            client,
+            project_id,
+            item["id"],
+            f"lecture-{index:02d}.txt",
+            content,
         )
-        assert response.status_code == 200, response.text
-        body = response.json()
-        assert body["timecode_path"] == path
-        assert body["timecode_status"] == "ok"
+        assert body["timecode_filename"] == f"lecture-{index:02d}.txt"
+        assert body["timecode_count"] == len(content.strip().splitlines())
 
 
 def _process(task_id: str, extractor: Any) -> TaskOutcome:
@@ -156,22 +174,29 @@ def test_frame_project_requires_timecode_file(
     assert client.get(f"/api/v1/projects/{project_id}/runs").json() == []
 
 
-def test_frame_project_rejects_changed_timecode_file(
+def test_uploaded_timecode_is_replaced_in_place(
     client: TestClient,
     sample_video: str,
-    sample_timecode: str,
 ) -> None:
     project_id = _create_frame_project(client)
     items = _add_videos(client, project_id, [sample_video])
-    _attach_timecodes(client, project_id, items, [sample_timecode])
+    _attach_timecodes(client, project_id, items, ["00:00:10\n00:00:20\n"])
 
-    timecode_path = Path(os.environ["NAS_INPUT_ROOT"]) / sample_timecode
-    timecode_path.write_text("00:00:10\n00:00:20\n00:00:30\n00:00:40\n")
+    body = _upload_timecode(
+        client,
+        project_id,
+        items[0]["id"],
+        "shots.txt",
+        "00:00:10\n00:00:20\n00:00:30\n",
+    )
 
-    response = client.post(f"/api/v1/projects/{project_id}/start")
+    assert body["timecode_filename"] == "shots.txt"
+    assert body["timecode_count"] == 3
 
-    assert response.status_code == 409
-    assert "changed" in response.json()["details"]["items"][0]["error"]
+    start = client.post(f"/api/v1/projects/{project_id}/start")
+    assert start.status_code == 202
+    task = client.get(f"/api/v1/tasks/{start.json()['task_ids'][0]}").json()
+    assert len(task["spec"]["timecodes"]) == 3
 
 
 def test_invalid_timecode_is_rejected_when_attached(
@@ -180,12 +205,10 @@ def test_invalid_timecode_is_rejected_when_attached(
 ) -> None:
     project_id = _create_frame_project(client)
     items = _add_videos(client, project_id, [sample_video])
-    invalid = Path(os.environ["NAS_INPUT_ROOT"]) / "invalid.txt"
-    invalid.write_text("00:00:10\nnot-a-timecode\n")
 
     response = client.put(
         f"/api/v1/projects/{project_id}/items/{items[0]['id']}/timecode",
-        json={"path": "invalid.txt"},
+        files={"file": ("invalid.txt", "00:00:10\nnot-a-timecode\n", "text/plain")},
     )
 
     assert response.status_code == 422
