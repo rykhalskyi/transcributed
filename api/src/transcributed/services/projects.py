@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
 from transcributed.config import get_settings
-from transcributed.enums import ProjectStatus
+from transcributed.enums import ProjectStatus, Workflow
 from transcributed.errors import ConflictError, NotFoundError, ValidationError
-from transcributed.models import Artifact, Project, ProjectItem, Task
+from transcributed.models import Artifact, Project, ProjectItem, Task, TimecodeFile
 from transcributed.schemas import (
     ArtifactRead,
     ProjectCreate,
+    ProjectDefaults,
     ProjectItemRead,
     ProjectItemResult,
     ProjectItemsAddRequest,
@@ -21,17 +22,28 @@ from transcributed.schemas import (
     ProjectUpdate,
 )
 from transcributed.services.runs import has_active_run
-from transcributed.services.spec import build_effective_spec, resolve_input_path
+from transcributed.services.spec import (
+    ResolvedInput,
+    build_effective_spec,
+    resolve_input_path,
+    source_matches,
+)
+from transcributed.services.timecodes import parse_timecodes
 from transcributed.services.videos import get_or_create_video
 
 settings = get_settings()
 
 
 async def create_project(session: AsyncSession, payload: ProjectCreate) -> Project:
+    if payload.workflow == Workflow.FRAMES:
+        defaults: dict[str, object] = {}
+    else:
+        defaults = (payload.defaults or ProjectDefaults()).model_dump()
     project = Project(
         name=payload.name,
         description=payload.description,
-        defaults=payload.defaults.model_dump(),
+        workflow=payload.workflow,
+        defaults=defaults,
         status=ProjectStatus.DRAFT,
     )
     session.add(project)
@@ -150,11 +162,12 @@ async def add_items(
                 continue
 
             overrides: dict[str, str] = {}
-            if item_input.language is not None:
-                overrides["language"] = item_input.language
-            if item_input.model is not None:
-                overrides["model"] = item_input.model
-            build_effective_spec(project.defaults, overrides or None)
+            if project.workflow == Workflow.TRANSCRIBE:
+                if item_input.language is not None:
+                    overrides["language"] = item_input.language
+                if item_input.model is not None:
+                    overrides["model"] = item_input.model
+                build_effective_spec(project.defaults, overrides or None)
 
             item = ProjectItem(
                 project_id=project.id,
@@ -213,6 +226,27 @@ async def _load_artifacts(
     return grouped
 
 
+def _timecode_status(item: ProjectItem) -> str | None:
+    if item.timecode_file is None:
+        return None
+    try:
+        resolved = resolve_input_path(
+            item.timecode_file.path,
+            settings.nas_input_root,
+            settings.timecode_extensions,
+        )
+    except (OSError, ValidationError):
+        return "missing"
+    if not source_matches(
+        item.timecode_file.size_bytes,
+        item.timecode_file.mtime,
+        resolved.size_bytes,
+        resolved.mtime,
+    ):
+        return "changed"
+    return "ok"
+
+
 def _to_item_read(
     item: ProjectItem,
     latest_task: Task | None,
@@ -226,6 +260,13 @@ def _to_item_read(
         position=item.position,
         included=item.included,
         spec_overrides=item.spec_overrides,
+        timecode_path=(item.timecode_file.path if item.timecode_file is not None else None),
+        timecode_count=(
+            item.timecode_file.timecodes_count
+            if item.timecode_file is not None
+            else None
+        ),
+        timecode_status=_timecode_status(item),
         latest_task_status=(latest_task.status if latest_task is not None else None),
         latest_task_id=(latest_task.id if latest_task is not None else None),
         latest_task_progress=(latest_task.progress if latest_task is not None else None),
@@ -245,7 +286,10 @@ async def list_project_items(
         await session.scalars(
             select(ProjectItem)
             .where(ProjectItem.project_id == project_id)
-            .options(selectinload(ProjectItem.video))
+            .options(
+                selectinload(ProjectItem.video),
+                selectinload(ProjectItem.timecode_file),
+            )
             .order_by(ProjectItem.position)
             .limit(limit)
             .offset(offset)
@@ -296,7 +340,10 @@ async def update_item(
             ProjectItem.id == item_id,
             ProjectItem.project_id == project.id,
         )
-        .options(selectinload(ProjectItem.video))
+        .options(
+            selectinload(ProjectItem.video),
+            selectinload(ProjectItem.timecode_file),
+        )
     )
     if item is None:
         raise NotFoundError("Project item not found")
@@ -356,3 +403,112 @@ async def remove_item(
 
     await session.delete(item)
     await session.commit()
+
+
+async def _get_or_create_timecode_file(
+    session: AsyncSession,
+    resolved: ResolvedInput,
+    timecodes_count: int,
+) -> TimecodeFile:
+    timecode_file = await session.scalar(
+        select(TimecodeFile).where(
+            TimecodeFile.path == resolved.relative_path,
+            TimecodeFile.size_bytes == resolved.size_bytes,
+            TimecodeFile.mtime == resolved.mtime,
+        )
+    )
+    if timecode_file is None:
+        timecode_file = TimecodeFile(
+            path=resolved.relative_path,
+            size_bytes=resolved.size_bytes,
+            mtime=resolved.mtime,
+            timecodes_count=timecodes_count,
+        )
+        session.add(timecode_file)
+        await session.flush()
+    else:
+        timecode_file.timecodes_count = timecodes_count
+    return timecode_file
+
+
+async def _item_read(session: AsyncSession, item: ProjectItem) -> ProjectItemRead:
+    await session.refresh(item, attribute_names=["video", "timecode_file"])
+    latest_task = await session.scalar(
+        select(Task)
+        .where(Task.project_item_id == item.id)
+        .order_by(Task.created_at.desc())
+        .limit(1)
+    )
+    artifacts = (
+        (await _load_artifacts(session, [latest_task.id])).get(latest_task.id, [])
+        if latest_task is not None
+        else []
+    )
+    return _to_item_read(item, latest_task, artifacts)
+
+
+async def _load_item_for_update(
+    session: AsyncSession,
+    project: Project,
+    item_id: UUID,
+) -> ProjectItem:
+    if await has_active_run(session, project.id):
+        raise ConflictError("Items cannot be edited while a run is active")
+    item = await session.scalar(
+        select(ProjectItem)
+        .where(
+            ProjectItem.id == item_id,
+            ProjectItem.project_id == project.id,
+        )
+        .options(
+            selectinload(ProjectItem.video),
+            selectinload(ProjectItem.timecode_file),
+        )
+    )
+    if item is None:
+        raise NotFoundError("Project item not found")
+    return item
+
+
+async def attach_timecode_file(
+    session: AsyncSession,
+    project: Project,
+    item_id: UUID,
+    path: str,
+) -> ProjectItemRead:
+    if project.workflow != Workflow.FRAMES:
+        raise ConflictError("Timecode files are only used by frame projects")
+    item = await _load_item_for_update(session, project, item_id)
+    resolved = resolve_input_path(
+        path,
+        settings.nas_input_root,
+        settings.timecode_extensions,
+    )
+    try:
+        content = resolved.absolute_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValidationError(f"Timecode file cannot be read: {exc}") from exc
+    timecodes = parse_timecodes(content, settings.max_frames_per_video)
+    timecode_file = await _get_or_create_timecode_file(
+        session,
+        resolved,
+        len(timecodes),
+    )
+    item.timecode_file_id = timecode_file.id
+    item.timecode_file = timecode_file
+    await session.commit()
+    return await _item_read(session, item)
+
+
+async def remove_timecode_file(
+    session: AsyncSession,
+    project: Project,
+    item_id: UUID,
+) -> ProjectItemRead:
+    if project.workflow != Workflow.FRAMES:
+        raise ConflictError("Timecode files are only used by frame projects")
+    item = await _load_item_for_update(session, project, item_id)
+    item.timecode_file_id = None
+    item.timecode_file = None
+    await session.commit()
+    return await _item_read(session, item)

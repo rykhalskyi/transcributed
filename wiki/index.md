@@ -17,3 +17,6 @@
 - [plans/timestamped-txt-output](pages/plans/timestamped-txt-output.md) — Optional per-project timecodes in plain TXT transcripts, without adding a new output format.
 - [plans/ui-slice](pages/plans/ui-slice.md) — Vue 3 white-themed LAN UI for projects, NAS file selection, runs, workers, and transcript downloads.
 - [plans/worker-slice](pages/plans/worker-slice.md) — Phased plan for the real Faster Whisper worker, container image, Kubernetes Jobs/KEDA, and end-to-end verification.
+
+## Tickets
+- [tickets/frame-extraction-workflow](pages/tickets/frame-extraction-workflow.md) — Project-level frame extraction workflow with per-video timecode files, PNG frames, and ZIP downloads.

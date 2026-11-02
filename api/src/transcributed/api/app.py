@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         url=settings.rabbitmq_url,
         exchange_name=settings.rabbitmq_exchange,
         jobs_queue=settings.rabbitmq_jobs_queue,
+        frames_queue=settings.rabbitmq_frames_queue,
         enabled=settings.rabbitmq_enabled,
         connect_timeout_seconds=settings.rabbitmq_connect_timeout_seconds,
     )

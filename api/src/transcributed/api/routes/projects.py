@@ -16,6 +16,7 @@ from transcributed.schemas import (
     ProjectUpdate,
     RunRead,
     StartProjectResponse,
+    TimecodeAttachRequest,
 )
 from transcributed.services import projects as project_service
 from transcributed.services import runs as run_service
@@ -126,6 +127,38 @@ async def update_project_item(
 ) -> ProjectItemRead:
     project = await project_service.get_project_for_update(session, project_id)
     return await project_service.update_item(session, project, item_id, payload)
+
+
+@router.put(
+    "/{project_id}/items/{item_id}/timecode",
+    response_model=ProjectItemRead,
+)
+async def attach_timecode_file(
+    project_id: UUID,
+    item_id: UUID,
+    payload: TimecodeAttachRequest,
+    session: AsyncSession = Depends(get_session),
+) -> ProjectItemRead:
+    project = await project_service.get_project_for_update(session, project_id)
+    return await project_service.attach_timecode_file(
+        session,
+        project,
+        item_id,
+        payload.path,
+    )
+
+
+@router.delete(
+    "/{project_id}/items/{item_id}/timecode",
+    response_model=ProjectItemRead,
+)
+async def remove_timecode_file(
+    project_id: UUID,
+    item_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> ProjectItemRead:
+    project = await project_service.get_project_for_update(session, project_id)
+    return await project_service.remove_timecode_file(session, project, item_id)
 
 
 @router.post(

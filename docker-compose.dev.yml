@@ -62,6 +62,25 @@ services:
       timeout: 5s
       retries: 20
 
+  frame-worker:
+    build:
+      context: ./api
+      target: frame-worker
+    profiles: ["worker"]
+    env_file:
+      - ./api/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://transcributed:transcributed@postgres:5432/transcributed
+      RABBITMQ_URL: amqp://transcributed:transcributed@rabbitmq:5672/
+      NAS_INPUT_ROOT: /nas/lectures
+    volumes:
+      - ${NAS_HOST_PATH:-./api/samples}:/nas/lectures:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   worker:
     build:
       context: ./api

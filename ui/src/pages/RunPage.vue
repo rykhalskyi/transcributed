@@ -47,6 +47,7 @@ const progress = computed(() => {
 });
 const live = computed(() => isLiveStatus(run.value?.status));
 const spec = computed(() => run.value?.spec ?? {});
+const isFrames = computed(() => spec.value.kind === "frames");
 
 async function load() {
   try {
@@ -105,7 +106,9 @@ async function download(task: Task, format: string) {
     await downloadArtifact(
       task.id,
       format,
-      `transcript-${task.id.slice(0, 8)}.${format}`,
+      format === "zip"
+        ? `frames-${task.id.slice(0, 8)}.zip`
+        : `transcript-${task.id.slice(0, 8)}.${format}`,
     );
   } catch (err) {
     actionError.value = messageOf(err);
@@ -203,15 +206,26 @@ onMounted(load);
             </p>
           </div>
           <div class="flex flex-wrap gap-2 text-xs">
-            <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
-              {{ spec.language ?? "auto" }}
-            </span>
-            <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
-              {{ spec.model ?? "small" }}
-            </span>
-            <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
-              {{ Array.isArray(spec.output_formats) ? spec.output_formats.join(", ") : "txt" }}
-            </span>
+            <template v-if="isFrames">
+              <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
+                PNG frames
+              </span>
+              <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
+                {{ tasks.reduce((sum, task) => sum + (task.frames_extracted ?? 0), 0) }}
+                frames
+              </span>
+            </template>
+            <template v-else>
+              <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
+                {{ spec.language ?? "auto" }}
+              </span>
+              <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
+                {{ spec.model ?? "small" }}
+              </span>
+              <span class="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-text-muted">
+                {{ Array.isArray(spec.output_formats) ? spec.output_formats.join(", ") : "txt" }}
+              </span>
+            </template>
           </div>
         </div>
         <div class="mt-4 h-2 overflow-hidden rounded-full bg-brand-purple-soft">
@@ -225,7 +239,8 @@ onMounted(load);
       <section class="card p-5">
         <h2 class="text-base font-bold">Tasks</h2>
         <p class="text-sm text-text-muted">
-          One task per lecture. Downloads appear when a transcript artifact exists.
+          One task per {{ isFrames ? "video" : "lecture" }}. Downloads appear when
+          {{ isFrames ? "a frame bundle" : "a transcript artifact" }} exists.
         </p>
 
         <div v-if="tasks.length === 0" class="mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted">
@@ -251,7 +266,12 @@ onMounted(load);
                 <td>
                   <div class="font-semibold">{{ task.id.slice(0, 8) }}</div>
                   <div class="max-w-[10rem] truncate text-xs text-text-muted">
-                    {{ task.error || task.video_id }}
+                    {{
+                      task.error ||
+                      (isFrames
+                        ? `${task.frames_extracted} extracted · ${task.frames_skipped} skipped`
+                        : task.video_id)
+                    }}
                   </div>
                 </td>
                 <td><StatusBadge :status="task.status" /></td>
@@ -298,7 +318,8 @@ onMounted(load);
                         v-if="downloading === `${task.id}:${artifact.format}`"
                         class="spinner mr-1 h-3 w-3"
                       />
-                      Download {{ artifact.format.toUpperCase() }}
+                      Download
+                      {{ artifact.format === "zip" ? "ZIP" : artifact.format.toUpperCase() }}
                     </button>
                   </div>
                   <span v-else class="text-xs text-text-muted">—</span>

@@ -21,6 +21,7 @@ config:
   rabbitmqEnabled: true
   rabbitmqExchange: transcription
   rabbitmqJobsQueue: transcription.jobs
+  rabbitmqFramesQueue: frames.jobs
   rabbitmqConnectTimeoutSeconds: 5
 
 secrets:
@@ -103,6 +104,36 @@ api:
       cpu: "1"
       memory: 512Mi
   podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+frameWorker:
+  image:
+    repository: ghcr.io/rykhalskyi/transcributed-frame-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  keda:
+    enabled: true
+    maxReplicaCount: 1
+    pollingInterval: 10
+    queueLength: "1"
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    activeDeadlineSeconds: 3600
+    ttlSecondsAfterFinished: 900
+    terminationGracePeriodSeconds: 60
+    restartPolicy: Never
+    backoffLimit: 0
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
   podSecurityContext: {}
   securityContext: {}
   nodeSelector: {}

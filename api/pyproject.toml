@@ -1,6 +1,6 @@
 [project]
 name = "transcributed"
-version = "0.2.6"
+version = "0.3.0"
 description = "Self-hosted lecture transcription control plane"
 readme = "README.md"
 authors = [
@@ -22,6 +22,7 @@ dependencies = [
 [project.scripts]
 transcributed = "transcributed:main"
 transcributed-worker = "transcributed.worker.main:main"
+transcributed-frame-worker = "transcributed.worker.main:frame_main"
 
 [project.optional-dependencies]
 worker = [

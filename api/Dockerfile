@@ -54,3 +54,15 @@ RUN mkdir -p /models \
 
 USER app
 CMD ["transcributed-worker"]
+
+
+FROM base AS frame-worker
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN uv sync --frozen --no-dev
+
+USER app
+CMD ["transcributed-frame-worker"]

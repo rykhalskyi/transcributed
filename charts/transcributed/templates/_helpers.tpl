@@ -49,6 +49,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s:%s" .Values.worker.image.repository (default .Chart.AppVersion .Values.worker.image.tag) }}
 {{- end }}
 
+{{- define "transcributed.frameWorkerImage" -}}
+{{- printf "%s:%s" .Values.frameWorker.image.repository (default .Chart.AppVersion .Values.frameWorker.image.tag) }}
+{{- end }}
+
 {{- define "transcributed.uiImage" -}}
 {{- printf "%s:%s" .Values.ui.image.repository (default .Chart.AppVersion .Values.ui.image.tag) }}
 {{- end }}

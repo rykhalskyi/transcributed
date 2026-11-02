@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from transcributed.enums import ProjectStatus, RunStatus, TaskStatus
+from transcributed.enums import ProjectStatus, RunStatus, TaskStatus, Workflow
 
 Language = Literal["en", "ru", "de", "auto"]
 Model = Literal["tiny", "base", "small", "medium", "large-v3"]
@@ -39,7 +39,8 @@ class ProjectDefaults(BaseModel):
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
-    defaults: ProjectDefaults = Field(default_factory=ProjectDefaults)
+    workflow: Workflow = Workflow.TRANSCRIBE
+    defaults: ProjectDefaults | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -54,6 +55,7 @@ class ProjectRead(BaseModel):
     id: UUID
     name: str
     description: str | None
+    workflow: Workflow
     status: ProjectStatus
     defaults: dict[str, Any]
     created_at: datetime
@@ -74,6 +76,10 @@ class ProjectItemUpdate(BaseModel):
 
 class ProjectItemsAddRequest(BaseModel):
     items: list[ProjectItemInput] = Field(min_length=1)
+
+
+class TimecodeAttachRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=1024)
 
 
 class ProjectItemResult(BaseModel):
@@ -109,6 +115,9 @@ class ProjectItemRead(BaseModel):
     position: int
     included: bool
     spec_overrides: dict[str, Any] | None
+    timecode_path: str | None = None
+    timecode_count: int | None = None
+    timecode_status: Literal["ok", "missing", "changed"] | None = None
     latest_task_status: TaskStatus | None = None
     latest_task_id: UUID | None = None
     latest_task_progress: int | None = None
@@ -131,6 +140,8 @@ class TaskRead(BaseModel):
     worker_pod: str | None = None
     worker_node: str | None = None
     progress: int = 0
+    frames_extracted: int = 0
+    frames_skipped: int = 0
     error: str | None
     created_at: datetime
     updated_at: datetime

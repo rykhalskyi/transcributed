@@ -1,7 +1,7 @@
 # Transcributed Helm chart
 
-Deploys the Transcributed web UI and API, the Faster Whisper worker as a KEDA
-`ScaledJob`, and the database migration hook.
+Deploys the Transcributed web UI and API, the Faster Whisper transcription worker
+and ffmpeg frame worker as KEDA `ScaledJob`s, and the database migration hook.
 
 ## Prerequisites
 
@@ -12,7 +12,8 @@ Deploys the Transcributed web UI and API, the Faster Whisper worker as a KEDA
 - RabbitMQ reachable from the cluster
 - A NAS share or an existing `ReadOnlyMany` PVC
 - Images: `ghcr.io/rykhalskyi/transcributed-api`,
-  `ghcr.io/rykhalskyi/transcributed-worker` and
+  `ghcr.io/rykhalskyi/transcributed-worker`,
+  `ghcr.io/rykhalskyi/transcributed-frame-worker` and
   `ghcr.io/rykhalskyi/transcributed-ui`
 
 ## Secrets
@@ -62,7 +63,11 @@ migration to roll the release back.
 | `config.whisperModel` | `small` | Model baked into the worker image |
 | `worker.keda.maxReplicaCount` | `1` | Max concurrent Jobs |
 | `worker.resources` | `1 CPU`/`4Gi` request, `4 CPU`/`12Gi` limit | Worker Pod sizing for multi-hour lectures |
-| `config.rabbitmqJobsQueue` | `transcription.jobs` | KEDA RabbitMQ queue |
+| `config.rabbitmqJobsQueue` | `transcription.jobs` | Transcription KEDA RabbitMQ queue |
+| `config.rabbitmqFramesQueue` | `frames.jobs` | Frame extraction KEDA RabbitMQ queue |
+| `frameWorker.image.repository` | `ghcr.io/rykhalskyi/transcributed-frame-worker` | ffmpeg-only frame worker image |
+| `frameWorker.keda.maxReplicaCount` | `1` | Max concurrent frame Jobs |
+| `frameWorker.resources` | `250m`/`256Mi` request, `2 CPU`/`2Gi` limit | Frame worker Pod sizing |
 | `nas.enabled` | `false` | Mount the input share |
 | `nas.existingClaim` | `""` | Use an existing PVC |
 | `nas.create` | `false` | Render a static NFS PV/PVC |

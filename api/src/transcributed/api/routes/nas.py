@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Query
 
 from transcributed.config import get_settings
@@ -13,11 +15,17 @@ settings = get_settings()
 async def list_nas_files(
     path: str = Query(default="", max_length=1024),
     limit: int = Query(default=500, ge=1, le=2000),
+    kind: Literal["video", "timecode"] = Query(default="video"),
 ) -> NasListing:
+    allowed_extensions = (
+        settings.timecode_extensions
+        if kind == "timecode"
+        else settings.allowed_extensions
+    )
     listing = nas_service.list_directory(
         settings.nas_input_root,
         path,
-        settings.allowed_extensions,
+        allowed_extensions,
         limit,
     )
     return NasListing(

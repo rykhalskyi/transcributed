@@ -1,6 +1,11 @@
 from enum import StrEnum
 
 
+class Workflow(StrEnum):
+    TRANSCRIBE = "transcribe"
+    FRAMES = "frames"
+
+
 class ProjectStatus(StrEnum):
     DRAFT = "draft"
     ACTIVE = "active"

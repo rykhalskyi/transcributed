@@ -1,3 +1,5 @@
+import type { Workflow } from "./types";
+
 export function formatDate(value?: string | null): string {
   if (!value) return "—";
   return new Intl.DateTimeFormat(undefined, {
@@ -31,7 +33,19 @@ export function formatBytes(value?: number | null): string {
   return `${size.toFixed(size >= 10 ? 0 : 1)} ${unit}`;
 }
 
-export function defaultsSummary(defaults: Record<string, unknown>): string {
+export function frameZipFilename(path: string): string {
+  const name = baseName(path);
+  const stem = name.includes(".") ? name.slice(0, name.lastIndexOf(".")) : name;
+  return `${stem}-frames.zip`;
+}
+
+export function defaultsSummary(
+  defaults: Record<string, unknown>,
+  workflow: Workflow = "transcribe",
+): string {
+  if (workflow === "frames") {
+    return "Frame extraction · PNG · ZIP";
+  }
   const language = String(defaults.language ?? "auto");
   const model = String(defaults.model ?? "small");
   const formats = Array.isArray(defaults.output_formats)
