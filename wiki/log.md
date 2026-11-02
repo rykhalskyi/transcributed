@@ -23,3 +23,4 @@
 ## [2026-10-22] update | Timestamped TXT output — implemented
 ## [2026-10-22] plan | Project defaults editing in the UI
 ## [2026-10-22] update | Project defaults editing — implemented
+## [2026-11-02] implement | Add frame extraction workflow with per-video timecodes, PNG frames, ZIP downloads, and a separate ffmpeg worker

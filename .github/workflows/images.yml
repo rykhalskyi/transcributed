@@ -44,6 +44,10 @@ jobs:
             context: ./api
             image: transcributed-worker
             build_args: "WHISPER_MODEL=small"
+          - target: frame-worker
+            context: ./api
+            image: transcributed-frame-worker
+            build_args: ""
           - target: runtime
             context: ./ui
             image: transcributed-ui

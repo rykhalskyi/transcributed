@@ -7,13 +7,15 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from transcributed.enums import Workflow
 from transcributed.errors import ValidationError
 from transcributed.schemas import ProjectDefaults
+from transcributed.services.timecodes import Timecode
 
 SUPPORTED_LANGUAGES = frozenset({"en", "ru", "de", "auto"})
 SUPPORTED_MODELS = frozenset({"tiny", "base", "small", "medium", "large-v3"})
 SUPPORTED_OUTPUT_FORMATS = frozenset({"vtt", "json", "txt"})
-SPEC_VERSION = 2
+SPEC_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,32 @@ def build_effective_spec(
         "output_formats": formats,
         "txt_timestamps": txt_timestamps and "txt" in formats,
     }
+
+
+def build_frame_spec(timecodes: list[Timecode]) -> dict[str, Any]:
+    return {
+        "spec_version": SPEC_VERSION,
+        "kind": "frames",
+        "image_format": "png",
+        "timecodes": [
+            {"seconds": timecode.seconds, "timecode": timecode.text}
+            for timecode in timecodes
+        ],
+    }
+
+
+def build_run_spec(
+    workflow: Workflow,
+    defaults: dict[str, Any] | None,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if workflow == Workflow.FRAMES:
+        return {
+            "spec_version": SPEC_VERSION,
+            "kind": "frames",
+            "image_format": "png",
+        }
+    return build_effective_spec(defaults, overrides)
 
 
 def spec_hash(spec: dict[str, Any]) -> str:

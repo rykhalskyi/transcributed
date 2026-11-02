@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from transcributed.config import get_settings
-from transcributed.enums import ProjectStatus, RunStatus, TaskStatus
+from transcributed.enums import ProjectStatus, RunStatus, TaskStatus, Workflow
 from transcributed.errors import (
     ConflictError,
     NotFoundError,
@@ -22,11 +22,14 @@ from transcributed.errors import (
 from transcributed.models import Project, ProjectItem, Run, Task
 from transcributed.services.spec import (
     build_effective_spec,
+    build_frame_spec,
+    build_run_spec,
     resolve_input_path,
     source_matches,
     spec_hash,
 )
 from transcributed.services.status import refresh_run_status
+from transcributed.services.timecodes import parse_timecodes
 
 settings = get_settings()
 log = structlog.get_logger(__name__)
@@ -37,7 +40,12 @@ class TaskEnqueuer(Protocol):
 
     async def ensure_connected(self) -> bool: ...
 
-    async def publish_task(self, task_id: UUID, run_id: UUID) -> bool: ...
+    async def publish_task(
+        self,
+        task_id: UUID,
+        run_id: UUID,
+        kind: Workflow = Workflow.TRANSCRIBE,
+    ) -> bool: ...
 
 
 async def has_active_run(session: AsyncSession, project_id: UUID) -> bool:
@@ -90,7 +98,10 @@ async def start_project(
                 ProjectItem.project_id == project.id,
                 ProjectItem.included.is_(True),
             )
-            .options(selectinload(ProjectItem.video))
+            .options(
+                selectinload(ProjectItem.video),
+                selectinload(ProjectItem.timecode_file),
+            )
             .order_by(ProjectItem.position)
         )
     ).all()
@@ -128,17 +139,57 @@ async def start_project(
                     }
                 )
                 continue
-            effective_specs[item.id] = build_effective_spec(
-                project.defaults,
-                item.spec_overrides,
-            )
+            if project.workflow == Workflow.FRAMES:
+                if item.timecode_file is None:
+                    problems.append(
+                        {
+                            "path": item.video.path,
+                            "error": "No timecode file attached",
+                        }
+                    )
+                    continue
+                timecode_resolved = resolve_input_path(
+                    item.timecode_file.path,
+                    settings.nas_input_root,
+                    settings.timecode_extensions,
+                )
+                if not source_matches(
+                    item.timecode_file.size_bytes,
+                    item.timecode_file.mtime,
+                    timecode_resolved.size_bytes,
+                    timecode_resolved.mtime,
+                ):
+                    problems.append(
+                        {
+                            "path": item.video.path,
+                            "error": "Timecode file changed since it was attached",
+                        }
+                    )
+                    continue
+                try:
+                    content = timecode_resolved.absolute_path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError) as exc:
+                    problems.append(
+                        {
+                            "path": item.video.path,
+                            "error": f"Timecode file cannot be read: {exc}",
+                        }
+                    )
+                    continue
+                timecodes = parse_timecodes(content, settings.max_frames_per_video)
+                effective_specs[item.id] = build_frame_spec(timecodes)
+            else:
+                effective_specs[item.id] = build_effective_spec(
+                    project.defaults,
+                    item.spec_overrides,
+                )
         except (OSError, ValidationError) as exc:
             problems.append({"path": item.video.path, "error": str(exc)})
 
     if problems:
         raise ConflictError("Project cannot be started", {"items": problems})
 
-    run_spec = build_effective_spec(project.defaults, None)
+    run_spec = build_run_spec(project.workflow, project.defaults, None)
     run = Run(
         project_id=project.id,
         status=RunStatus.QUEUED,
@@ -172,7 +223,11 @@ async def start_project(
     if publisher is not None and publisher.enabled:
         for task in tasks:
             try:
-                published = await publisher.publish_task(task.id, run.id)
+                published = await publisher.publish_task(
+                    task.id,
+                    run.id,
+                    project.workflow,
+                )
             except Exception:
                 log.exception("publish_failed", task_id=str(task.id), run_id=str(run.id))
                 published = False

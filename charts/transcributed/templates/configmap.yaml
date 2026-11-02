@@ -18,5 +18,6 @@ data:
   RABBITMQ_ENABLED: {{ .Values.config.rabbitmqEnabled | quote }}
   RABBITMQ_EXCHANGE: {{ .Values.config.rabbitmqExchange | quote }}
   RABBITMQ_JOBS_QUEUE: {{ .Values.config.rabbitmqJobsQueue | quote }}
+  RABBITMQ_FRAMES_QUEUE: {{ .Values.config.rabbitmqFramesQueue | quote }}
   RABBITMQ_CONNECT_TIMEOUT_SECONDS: {{ .Values.config.rabbitmqConnectTimeoutSeconds | quote }}
   CORS_ORIGINS: {{ .Values.api.corsOrigins | toJson | quote }}

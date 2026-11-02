@@ -34,6 +34,12 @@ Run one worker iteration (one message, or exit when the queue is empty):
 uv run transcributed-worker
 ```
 
+Frame projects use the ffmpeg-only worker and a separate `frames.jobs` queue:
+
+```bash
+uv run transcributed-frame-worker
+```
+
 The real backend needs the `worker` extra. Without it, set `WORKER_BACKEND=fake`
 in `.env` and a plain `uv sync` is enough for local API/control-plane work.
 
@@ -66,6 +72,10 @@ uv run mypy src tests
   the newly created run and tasks.
 - `RABBITMQ_ENABLED=false` is an explicit development mode: starts succeed without
   publishing and report `not_enqueued` in the response.
+- Frame projects attach one `.txt` timecode file per video. Each line is
+  `HH:MM:SS`; invalid lines reject the attach or start. Timecodes beyond the
+  video duration are skipped, and only successfully extracted PNG frames are
+  saved. A per-video ZIP is generated on demand from stored frames.
 - Failed tasks are not retried automatically; terminal failures are routed to
   the `transcription.dead` queue. A task left `processing` by a worker that exited
   is marked `failed` when its message is redelivered.

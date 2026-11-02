@@ -14,7 +14,7 @@ import {
   type Model,
   type OutputFormat,
 } from "@/lib/projectDefaults";
-import type { Project } from "@/lib/types";
+import type { Project, Workflow } from "@/lib/types";
 
 const router = useRouter();
 
@@ -28,6 +28,7 @@ const submitting = ref(false);
 const form = reactive({
   name: "",
   description: "",
+  workflow: "transcribe" as Workflow,
   language: "auto" as Language,
   model: "small" as Model,
   outputFormats: ["txt"] as OutputFormat[],
@@ -35,7 +36,9 @@ const form = reactive({
 });
 
 const canSubmit = computed(
-  () => form.name.trim().length > 0 && form.outputFormats.length > 0,
+  () =>
+    form.name.trim().length > 0 &&
+    (form.workflow === "frames" || form.outputFormats.length > 0),
 );
 
 async function load() {
@@ -52,6 +55,7 @@ async function load() {
 function resetForm() {
   form.name = "";
   form.description = "";
+  form.workflow = "transcribe";
   form.language = "auto";
   form.model = "small";
   form.outputFormats = ["txt"];
@@ -77,7 +81,9 @@ async function submit() {
     const project = await createProject({
       name: form.name.trim(),
       description: form.description.trim() || null,
-      defaults: projectDefaultsFromDraft(form),
+      workflow: form.workflow,
+      defaults:
+        form.workflow === "transcribe" ? projectDefaultsFromDraft(form) : null,
     });
     dialogOpen.value = false;
     resetForm();
@@ -146,7 +152,9 @@ onMounted(load);
         <div
           class="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-text-muted"
         >
-          <span class="truncate">{{ defaultsSummary(project.defaults) }}</span>
+          <span class="truncate">
+            {{ defaultsSummary(project.defaults, project.workflow) }}
+          </span>
           <span class="shrink-0">{{ formatDate(project.updated_at) }}</span>
         </div>
       </RouterLink>
@@ -197,6 +205,48 @@ onMounted(load);
             </div>
 
             <div>
+              <span class="label">Workflow</span>
+              <div class="grid gap-2 sm:grid-cols-2">
+                <label
+                  class="cursor-pointer rounded-lg border px-3 py-2 text-sm transition"
+                  :class="
+                    form.workflow === 'transcribe'
+                      ? 'border-brand-purple/30 bg-brand-purple-soft text-brand-purple'
+                      : 'border-border bg-white text-brand-navy'
+                  "
+                >
+                  <input
+                    v-model="form.workflow"
+                    type="radio"
+                    value="transcribe"
+                    class="sr-only"
+                    :disabled="submitting"
+                  />
+                  <span class="block font-semibold">Transcription</span>
+                  <span class="block text-xs opacity-80">Video to TXT, VTT, or JSON</span>
+                </label>
+                <label
+                  class="cursor-pointer rounded-lg border px-3 py-2 text-sm transition"
+                  :class="
+                    form.workflow === 'frames'
+                      ? 'border-brand-purple/30 bg-brand-purple-soft text-brand-purple'
+                      : 'border-border bg-white text-brand-navy'
+                  "
+                >
+                  <input
+                    v-model="form.workflow"
+                    type="radio"
+                    value="frames"
+                    class="sr-only"
+                    :disabled="submitting"
+                  />
+                  <span class="block font-semibold">Frame extraction</span>
+                  <span class="block text-xs opacity-80">Video timecodes to PNG frames</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
               <label class="label" for="project-description">
                 Description <span class="normal-case tracking-normal">(optional)</span>
               </label>
@@ -210,6 +260,7 @@ onMounted(load);
             </div>
 
             <ProjectDefaultsForm
+              v-if="form.workflow === 'transcribe'"
               v-model:language="form.language"
               v-model:output-formats="form.outputFormats"
               v-model:txt-timestamps="form.txtTimestamps"
@@ -220,8 +271,14 @@ onMounted(load);
             <div
               class="rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs text-text-muted"
             >
-              Model: <span class="font-semibold text-brand-navy">small</span>.
-              The deployed worker image only contains this model.
+              <template v-if="form.workflow === 'transcribe'">
+                Model: <span class="font-semibold text-brand-navy">small</span>.
+                The deployed worker image only contains this model.
+              </template>
+              <template v-else>
+                Frames are saved as original-resolution PNG files. Attach a
+                timecode file to each video on the project page.
+              </template>
             </div>
 
             <p

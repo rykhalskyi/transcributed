@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     rabbitmq_enabled: bool = True
     rabbitmq_exchange: str = "transcription"
     rabbitmq_jobs_queue: str = "transcription.jobs"
+    rabbitmq_frames_queue: str = "frames.jobs"
     rabbitmq_connect_timeout_seconds: float = 5.0
 
     nas_input_root: Path = Path("/nas/lectures")
@@ -54,6 +55,8 @@ class Settings(BaseSettings):
         ".opus",
     )
     max_batch_items: int = 500
+    max_frames_per_video: int = 50
+    timecode_extensions: tuple[str, ...] = (".txt",)
 
     default_language: str = "auto"
     default_model: str = "small"

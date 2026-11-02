@@ -30,6 +30,7 @@
         "rabbitmqEnabled": {"type": "boolean"},
         "rabbitmqExchange": {"type": "string"},
         "rabbitmqJobsQueue": {"type": "string"},
+        "rabbitmqFramesQueue": {"type": "string"},
         "rabbitmqConnectTimeoutSeconds": {"type": "number"}
       }
     },
@@ -122,6 +123,36 @@
       }
     },
     "worker": {
+      "type": "object",
+      "required": ["image", "keda"],
+      "properties": {
+        "image": {"$ref": "#/definitions/image"},
+        "keda": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "maxReplicaCount": {"type": "integer", "minimum": 1},
+            "pollingInterval": {"type": "integer", "minimum": 1},
+            "queueLength": {"type": "string"},
+            "successfulJobsHistoryLimit": {"type": "integer", "minimum": 0},
+            "failedJobsHistoryLimit": {"type": "integer", "minimum": 0},
+            "activeDeadlineSeconds": {"type": "integer", "minimum": 1},
+            "ttlSecondsAfterFinished": {"type": "integer", "minimum": 0},
+            "terminationGracePeriodSeconds": {"type": "integer", "minimum": 0},
+            "restartPolicy": {"enum": ["Never", "OnFailure"]},
+            "backoffLimit": {"type": "integer", "minimum": 0}
+          }
+        },
+        "resources": {"type": "object"},
+        "podSecurityContext": {"type": "object"},
+        "securityContext": {"type": "object"},
+        "nodeSelector": {"type": "object"},
+        "tolerations": {"type": "array"},
+        "affinity": {"type": "object"}
+      }
+    },
+    "frameWorker": {
       "type": "object",
       "required": ["image", "keda"],
       "properties": {

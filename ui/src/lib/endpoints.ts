@@ -71,10 +71,11 @@ export async function getApiVersion(): Promise<string> {
 export async function listNasFiles(
   path = "",
   limit = 500,
+  kind: "video" | "timecode" = "video",
 ): Promise<NasListing> {
   return unwrap(
     await api.GET("/api/v1/nas/files", {
-      params: { query: { path, limit } },
+      params: { query: { path, limit, kind } },
     }),
   );
 }
@@ -167,6 +168,30 @@ export async function removeProjectItem(
 ): Promise<void> {
   assertOk(
     await api.DELETE("/api/v1/projects/{project_id}/items/{item_id}", {
+      params: { path: { project_id: projectId, item_id: itemId } },
+    }),
+  );
+}
+
+export async function attachTimecodeFile(
+  projectId: string,
+  itemId: string,
+  path: string,
+): Promise<ProjectItem> {
+  return unwrap(
+    await api.PUT("/api/v1/projects/{project_id}/items/{item_id}/timecode", {
+      params: { path: { project_id: projectId, item_id: itemId } },
+      body: { path },
+    }),
+  );
+}
+
+export async function removeTimecodeFile(
+  projectId: string,
+  itemId: string,
+): Promise<ProjectItem> {
+  return unwrap(
+    await api.DELETE("/api/v1/projects/{project_id}/items/{item_id}/timecode", {
       params: { path: { project_id: projectId, item_id: itemId } },
     }),
   );

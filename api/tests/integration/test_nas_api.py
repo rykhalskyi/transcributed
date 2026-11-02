@@ -119,3 +119,17 @@ def test_nas_skips_symlinks_that_escape_the_root(client: TestClient) -> None:
         ]
     finally:
         shutil.rmtree(outside)
+
+
+def test_nas_timecode_kind_lists_text_files(client: TestClient) -> None:
+    case = _case_dir("nas-timecode-kind")
+    (case / "lecture.mp4").write_bytes(b"video")
+    (case / "lecture.txt").write_text("00:00:10\n")
+
+    response = client.get(
+        "/api/v1/nas/files",
+        params={"path": "nas-timecode-kind", "kind": "timecode"},
+    )
+
+    assert response.status_code == 200
+    assert [file["name"] for file in response.json()["files"]] == ["lecture.txt"]

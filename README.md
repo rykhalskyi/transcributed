@@ -26,6 +26,8 @@ Create a project, pick the lectures you want, and start a run. Transcributed sna
 - **Project-based lecture lists** — save a course as a project, browse the NAS, and add the files you want.
 - **One task per lecture** — each recording is an isolated queue message and worker Job.
 - **Queue-driven scaling** — KEDA creates a worker Job for each queued lecture.
+- **Frame extraction workflow** — attach a per-video timecode file and download original-resolution PNG frames as a ZIP bundle.
+- **Two worker types** — Faster Whisper transcription and ffmpeg frame extraction run on separate queues and images.
 - **Multiple output formats** — plain text, WebVTT, JSON with timed segments, and metadata.
 - **Optional timestamps in TXT** — prefix every line with its source time range.
 - **Language control** — automatic detection or explicit English, Russian, or German.
@@ -43,7 +45,7 @@ flowchart LR
   MQ --> KEDA["KEDA"]
   KEDA -->|"one Job per task"| W["Faster Whisper worker"]
   W -->|"read-only"| NAS[("NAS lecture library")]
-  W -->|"transcripts + status"| DB
+  W -->|"transcripts, frames + status"| DB
   API -->|"downloads"| UI
 ```
 
@@ -98,6 +100,13 @@ Run one worker iteration directly:
 ```bash
 cd api
 uv run transcributed-worker
+```
+
+Frame extraction uses a separate ffmpeg-only worker and queue:
+
+```bash
+cd api
+uv run transcributed-frame-worker
 ```
 
 Or use the container, which already contains `ffmpeg` and the Whisper model:
@@ -165,6 +174,8 @@ Settings live in `api/.env` (see `api/.env.example`). The most important values:
 | `WHISPER_MODEL` | Whisper model to use (`small` in the container image) |
 | `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | Default `cpu` / `int8` |
 | `WHISPER_LOCAL_FILES_ONLY` | Prevent runtime model downloads |
+| `RABBITMQ_FRAMES_QUEUE` | Queue consumed by the frame-extraction worker (default `frames.jobs`) |
+| `MAX_FRAMES_PER_VIDEO` | Maximum timecodes accepted per video (default `50`) |
 
 ## Status
 

@@ -22,6 +22,7 @@ dependencies = [
 [project.scripts]
 transcributed = "transcributed:main"
 transcributed-worker = "transcributed.worker.main:main"
+transcributed-frame-worker = "transcributed.worker.main:frame_main"
 
 [project.optional-dependencies]
 worker = [

@@ -25,3 +25,5 @@ Append-only decision record. The "why" lives here; the full change history lives
 - [2026-10-20] D-21 — Use the PNG-only logo with generated mark and favicon variants on white surfaces — because no vector source exists and the provided raster is high-resolution enough for 1x/2x
 - [2026-10-20] D-22 — Persist per-task transcription progress (0–100) and report it from the worker — because the UI needs live lecture progress without WebSockets or SSE
 - [2026-10-21] D-23 — Remove automatic task retries and retry queues; fail tasks immediately and mark abandoned processing tasks failed on redelivery — because retries created duplicate/orphaned worker pods and confusing attempt counters
+- [2026-11-02] D-24 — Frame extraction is a project-level workflow with one timecode file per video — because each video can use a different shot list.
+- [2026-11-02] D-25 — PNG frames are stored in PostgreSQL and the per-video ZIP is generated on demand — because expected volumes are 10–50 frames per video.

@@ -31,7 +31,12 @@ class FakePublisher:
     async def ensure_connected(self) -> bool:
         return self.ensure_ready
 
-    async def publish_task(self, task_id: UUID, run_id: UUID) -> bool:
+    async def publish_task(
+        self,
+        task_id: UUID,
+        run_id: UUID,
+        kind: object | None = None,
+    ) -> bool:
         self.published.append((task_id, run_id))
         failing = self.fail_on_call is not None and len(self.published) >= self.fail_on_call
         return not failing

@@ -54,8 +54,8 @@ async def _truncate() -> None:
     async with engine.begin() as connection:
         await connection.execute(
             text(
-                "TRUNCATE artifacts, tasks, runs, project_items, projects, videos "
-                "RESTART IDENTITY CASCADE"
+                "TRUNCATE task_frames, artifacts, timecode_files, tasks, runs, "
+                "project_items, projects, videos RESTART IDENTITY CASCADE"
             )
         )
 
@@ -91,3 +91,19 @@ def sample_videos() -> list[str]:
     for name in names:
         (TEST_ROOT / "samples" / name).write_bytes(b"fake video content")
     return names
+
+
+@pytest.fixture
+def sample_timecode() -> str:
+    path = TEST_ROOT / "samples" / "lecture-01.txt"
+    path.write_text("00:00:10\n00:00:20\n00:00:30\n")
+    return "lecture-01.txt"
+
+
+@pytest.fixture
+def sample_timecodes() -> list[str]:
+    first = TEST_ROOT / "samples" / "lecture-01.txt"
+    second = TEST_ROOT / "samples" / "lecture-02.txt"
+    first.write_text("00:00:10\n00:00:20\n")
+    second.write_text("00:00:15\n00:00:25\n00:00:35\n")
+    return ["lecture-01.txt", "lecture-02.txt"]

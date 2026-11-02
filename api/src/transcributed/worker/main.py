@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -22,9 +23,15 @@ from transcributed.db import SessionLocal, engine
 from transcributed.enums import TaskStatus
 from transcributed.logging import configure_logging
 from transcributed.messaging.topology import declare_topology
-from transcributed.models import Artifact, ProjectItem, Task
+from transcributed.models import Artifact, ProjectItem, Task, TaskFrame
 from transcributed.services.spec import resolve_input_path
 from transcributed.services.status import refresh_run_status
+from transcributed.worker.frames import (
+    FfmpegFrameExtractor,
+    FrameExtractionResult,
+    FrameExtractor,
+    NoFramesExtracted,
+)
 from transcributed.worker.transcriber import (
     FakeTranscriber,
     FasterWhisperTranscriber,
@@ -75,6 +82,10 @@ def create_transcriber() -> Transcriber:
             baked_model=settings.whisper_model,
         )
     raise ValueError(f"Unsupported worker backend: {settings.worker_backend}")
+
+
+def create_frame_extractor() -> FrameExtractor:
+    return FfmpegFrameExtractor(ffmpeg_binary=settings.ffmpeg_binary)
 
 
 def sync_database_url(url: str) -> str:
@@ -186,6 +197,7 @@ async def process_task(
     session: AsyncSession,
     task_id: UUID,
     transcriber: Transcriber | None = None,
+    frame_extractor: FrameExtractor | None = None,
 ) -> TaskOutcome:
     task = await load_task(session, task_id)
     if task is None:
@@ -221,6 +233,8 @@ async def process_task(
     task.worker_pod = os.getenv("POD_NAME") or None
     task.worker_node = os.getenv("NODE_NAME") or None
     task.progress = 0
+    task.frames_extracted = 0
+    task.frames_skipped = 0
     task.error = None
     await session.flush()
     await refresh_run_status(session, task.run_id)
@@ -239,8 +253,7 @@ async def process_task(
             settings.nas_input_root,
             settings.allowed_extensions,
         )
-
-        worker = transcriber or create_transcriber()
+        kind = str(task.spec.get("kind") or "transcribe")
         cancel_check = CancellationCheck(
             task.id,
             sync_database_url(settings.database_url),
@@ -249,58 +262,128 @@ async def process_task(
             task.id,
             sync_database_url(settings.database_url),
         )
-        def run_transcription(
-            input_path: Path,
-            spec: dict[str, Any],
-        ) -> dict[str, str]:
-            try:
-                return worker.transcribe(
-                    input_path,
-                    spec,
-                    should_cancel=cancel_check,
-                    on_progress=progress_reporter,
-                )
-            finally:
-                cancel_check.close()
-                progress_reporter.close()
-
         started = time.monotonic()
-        files = await asyncio.to_thread(
-            run_transcription,
-            resolved.absolute_path,
-            task.spec,
-        )
+        files: dict[str, str] = {}
+        frame_result: FrameExtractionResult | None = None
+        worker: Transcriber | FrameExtractor
+        worker_details: dict[str, Any] = {}
+
+        if kind == "frames":
+            extractor = frame_extractor or create_frame_extractor()
+            worker = extractor
+
+            def run_frame_extraction(
+                input_path: Path,
+                spec: dict[str, Any],
+            ) -> FrameExtractionResult:
+                try:
+                    return extractor.extract(
+                        input_path,
+                        spec,
+                        should_cancel=cancel_check,
+                        on_progress=progress_reporter,
+                    )
+                finally:
+                    cancel_check.close()
+                    progress_reporter.close()
+
+            frame_result = await asyncio.to_thread(
+                run_frame_extraction,
+                resolved.absolute_path,
+                task.spec,
+            )
+            if not frame_result.frames:
+                raise NoFramesExtracted(len(frame_result.skipped))
+            worker_details = {"ffmpeg_binary": getattr(extractor, "ffmpeg_binary", None)}
+        else:
+            selected_transcriber = transcriber or create_transcriber()
+            worker = selected_transcriber
+
+            def run_transcription(
+                input_path: Path,
+                spec: dict[str, Any],
+            ) -> dict[str, str]:
+                try:
+                    return selected_transcriber.transcribe(
+                        input_path,
+                        spec,
+                        should_cancel=cancel_check,
+                        on_progress=progress_reporter,
+                    )
+                finally:
+                    cancel_check.close()
+                    progress_reporter.close()
+
+            files = await asyncio.to_thread(
+                run_transcription,
+                resolved.absolute_path,
+                task.spec,
+            )
+            if isinstance(selected_transcriber, FasterWhisperTranscriber):
+                worker_details = {
+                    "device": selected_transcriber.device,
+                    "compute_type": selected_transcriber.compute_type,
+                    "beam_size": selected_transcriber.beam_size,
+                    "vad_filter": selected_transcriber.vad_filter,
+                    "local_files_only": selected_transcriber.local_files_only,
+                }
+
         elapsed_seconds = round(time.monotonic() - started, 3)
 
-        worker_details: dict[str, Any] = {}
-        if isinstance(worker, FasterWhisperTranscriber):
-            worker_details = {
-                "device": worker.device,
-                "compute_type": worker.compute_type,
-                "beam_size": worker.beam_size,
-                "vad_filter": worker.vad_filter,
-                "local_files_only": worker.local_files_only,
-            }
-
-        metadata = json.dumps(
-            {
+        if kind == "frames":
+            assert frame_result is not None
+            requested = len(task.spec.get("timecodes") or [])
+            manifest = {
                 "task_id": str(task.id),
                 "run_id": str(task.run_id),
                 "project_id": str(task.run.project_id),
                 "source_path": task.project_item.video.path,
+                "kind": "frames",
                 "spec": task.spec,
-                "transcriber": type(worker).__name__,
-                "model": task.spec.get("model"),
+                "extractor": type(worker).__name__,
                 "worker": worker_details,
                 "worker_pod": task.worker_pod,
                 "worker_node": task.worker_node,
+                "requested": requested,
+                "extracted": len(frame_result.frames),
+                "skipped": frame_result.skipped,
+                "frames": [
+                    {
+                        "index": frame.index,
+                        "timecode": frame.timecode,
+                        "seconds": frame.timecode_seconds,
+                        "filename": frame.filename,
+                        "width": frame.width,
+                        "height": frame.height,
+                        "size_bytes": len(frame.data),
+                    }
+                    for frame in frame_result.frames
+                ],
                 "progress_percent": 100,
                 "elapsed_seconds": elapsed_seconds,
                 "generated_at": datetime.now(UTC).isoformat(),
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+            }
+            metadata = json.dumps(manifest, ensure_ascii=False, indent=2)
+        else:
+            metadata = json.dumps(
+                {
+                    "task_id": str(task.id),
+                    "run_id": str(task.run_id),
+                    "project_id": str(task.run.project_id),
+                    "source_path": task.project_item.video.path,
+                    "spec": task.spec,
+                    "transcriber": type(worker).__name__,
+                    "model": task.spec.get("model"),
+                    "worker": worker_details,
+                    "worker_pod": task.worker_pod,
+                    "worker_node": task.worker_node,
+                    "progress_percent": 100,
+                    "elapsed_seconds": elapsed_seconds,
+                    "generated_at": datetime.now(UTC).isoformat(),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
 
         locked_status = await session.scalar(
             select(Task.status).where(Task.id == task.id).with_for_update()
@@ -319,27 +402,75 @@ async def process_task(
             return TaskOutcome(TaskDisposition.NOOP)
 
         await session.execute(delete(Artifact).where(Artifact.task_id == task.id))
-        artifacts = [
-            Artifact(
-                task_id=task.id,
-                format=file_format,
-                filename=f"transcript.{file_format}",
-                content_type=CONTENT_TYPES[file_format],
-                content=content,
-                size_bytes=len(content.encode("utf-8")),
+        if kind == "frames":
+            assert frame_result is not None
+            await session.execute(
+                delete(TaskFrame).where(TaskFrame.task_id == task.id)
             )
-            for file_format, content in files.items()
-        ]
-        artifacts.append(
-            Artifact(
-                task_id=task.id,
-                format="metadata",
-                filename="metadata.json",
-                content_type="application/json",
-                content=metadata,
-                size_bytes=len(metadata.encode("utf-8")),
+            session.add_all(
+                [
+                    TaskFrame(
+                        task_id=task.id,
+                        index=frame.index,
+                        timecode_seconds=float(frame.timecode_seconds),
+                        timecode=frame.timecode,
+                        filename=frame.filename,
+                        content_type="image/png",
+                        width=frame.width,
+                        height=frame.height,
+                        size_bytes=len(frame.data),
+                        sha256=hashlib.sha256(frame.data).hexdigest(),
+                        data=frame.data,
+                    )
+                    for frame in frame_result.frames
+                ]
             )
-        )
+            source_stem = Path(task.project_item.video.path).stem or "video"
+            artifacts = [
+                Artifact(
+                    task_id=task.id,
+                    format="manifest",
+                    filename="frames.json",
+                    content_type="application/json",
+                    content=metadata,
+                    size_bytes=len(metadata.encode("utf-8")),
+                ),
+                Artifact(
+                    task_id=task.id,
+                    format="zip",
+                    filename=f"{source_stem}-frames.zip",
+                    content_type="application/zip",
+                    content=None,
+                    size_bytes=(
+                        sum(len(frame.data) for frame in frame_result.frames)
+                        + len(metadata.encode("utf-8"))
+                    ),
+                ),
+            ]
+            task.frames_extracted = len(frame_result.frames)
+            task.frames_skipped = len(frame_result.skipped)
+        else:
+            artifacts = [
+                Artifact(
+                    task_id=task.id,
+                    format=file_format,
+                    filename=f"transcript.{file_format}",
+                    content_type=CONTENT_TYPES[file_format],
+                    content=content,
+                    size_bytes=len(content.encode("utf-8")),
+                )
+                for file_format, content in files.items()
+            ]
+            artifacts.append(
+                Artifact(
+                    task_id=task.id,
+                    format="metadata",
+                    filename="metadata.json",
+                    content_type="application/json",
+                    content=metadata,
+                    size_bytes=len(metadata.encode("utf-8")),
+                )
+            )
         session.add_all(artifacts)
 
         task.status = TaskStatus.SUCCEEDED
@@ -400,6 +531,9 @@ async def process_task(
                 )
             return TaskOutcome(TaskDisposition.NOOP)
 
+        if isinstance(exc, NoFramesExtracted):
+            task.frames_extracted = 0
+            task.frames_skipped = exc.skipped
         task.error = str(exc)[:4000]
         if isinstance(exc, PermanentTaskError):
             log.error("task_permanent_failure", task_id=str(task_id), error=task.error)
@@ -415,7 +549,7 @@ async def process_task(
         )
 
 
-async def run_once() -> int:
+async def run_once(queue_name: str | None = None) -> int:
     configure_logging(settings.log_level)
     if not settings.rabbitmq_enabled:
         log.warning("worker_rabbitmq_disabled")
@@ -429,8 +563,14 @@ async def run_once() -> int:
             channel,
             settings.rabbitmq_exchange,
             settings.rabbitmq_jobs_queue,
+            settings.rabbitmq_frames_queue,
         )
-        message = await topology.jobs_queue.get(no_ack=False, fail=False)
+        selected_queue = (
+            topology.frames_queue
+            if queue_name == settings.rabbitmq_frames_queue
+            else topology.jobs_queue
+        )
+        message = await selected_queue.get(no_ack=False, fail=False)
         if message is None:
             log.info("worker_no_task_available")
             await engine.dispose()
@@ -474,12 +614,20 @@ async def run_once() -> int:
     return 0
 
 
-def main() -> None:
+def _run(worker: Any) -> None:
     try:
-        raise SystemExit(asyncio.run(run_once()))
+        raise SystemExit(asyncio.run(worker()))
     except SystemExit:
         raise
     except Exception:
         configure_logging(settings.log_level)
         log.exception("worker_crashed")
         sys.exit(1)
+
+
+def main() -> None:
+    _run(run_once)
+
+
+def frame_main() -> None:
+    _run(lambda: run_once(settings.rabbitmq_frames_queue))

@@ -99,3 +99,29 @@ def test_source_matches_within_tolerance() -> None:
     assert source_matches(10, mtime, 10, mtime + timedelta(milliseconds=500))
     assert not source_matches(10, mtime, 11, mtime)
     assert not source_matches(10, mtime, 10, mtime + timedelta(seconds=2))
+
+
+def test_build_frame_spec_snapshots_timecodes() -> None:
+    from transcributed.services.spec import build_frame_spec
+    from transcributed.services.timecodes import Timecode
+
+    spec = build_frame_spec(
+        [Timecode(seconds=83, text="00:01:23"), Timecode(seconds=90, text="00:01:30")]
+    )
+
+    assert spec["kind"] == "frames"
+    assert spec["image_format"] == "png"
+    assert spec["timecodes"] == [
+        {"seconds": 83, "timecode": "00:01:23"},
+        {"seconds": 90, "timecode": "00:01:30"},
+    ]
+
+
+def test_build_run_spec_uses_frame_workflow() -> None:
+    from transcributed.enums import Workflow
+    from transcributed.services.spec import build_run_spec
+
+    spec = build_run_spec(Workflow.FRAMES, {"language": "de"})
+
+    assert spec["kind"] == "frames"
+    assert "language" not in spec

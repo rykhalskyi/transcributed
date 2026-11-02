@@ -8,6 +8,7 @@ import structlog
 from aio_pika import DeliveryMode
 from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange
 
+from transcributed.enums import Workflow
 from transcributed.messaging.topology import declare_topology
 
 log = structlog.get_logger(__name__)
@@ -19,12 +20,14 @@ class TaskPublisher:
         url: str,
         exchange_name: str,
         jobs_queue: str,
+        frames_queue: str = "frames.jobs",
         enabled: bool = True,
         connect_timeout_seconds: float = 5.0,
     ) -> None:
         self.url = url
         self.exchange_name = exchange_name
         self.jobs_queue = jobs_queue
+        self.frames_queue = frames_queue
         self.enabled = enabled
         self.connect_timeout_seconds = connect_timeout_seconds
         self._connection: AbstractConnection | None = None
@@ -54,6 +57,7 @@ class TaskPublisher:
                 self._channel,
                 self.exchange_name,
                 self.jobs_queue,
+                self.frames_queue,
             )
             self._exchange = topology.exchange
         except Exception:
@@ -65,13 +69,21 @@ class TaskPublisher:
     async def ensure_connected(self) -> bool:
         return await self.connect()
 
-    async def publish_task(self, task_id: UUID, run_id: UUID) -> bool:
+    async def publish_task(
+        self,
+        task_id: UUID,
+        run_id: UUID,
+        kind: Workflow = Workflow.TRANSCRIBE,
+    ) -> bool:
         if not self.enabled:
             return False
         if not self.is_connected:
             await self.ensure_connected()
         if self._exchange is None:
             return False
+        routing_key = (
+            self.frames_queue if kind == Workflow.FRAMES else self.jobs_queue
+        )
 
         body = json.dumps(
             {"v": 1, "task_id": str(task_id), "run_id": str(run_id)},
@@ -84,7 +96,7 @@ class TaskPublisher:
             message_id=str(task_id),
         )
         try:
-            await self._exchange.publish(message, routing_key=self.jobs_queue)
+            await self._exchange.publish(message, routing_key=routing_key)
             return True
         except Exception:
             log.exception("rabbitmq_publish_failed", task_id=str(task_id))

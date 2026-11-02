@@ -1,0 +1,95 @@
+{{- if .Values.frameWorker.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: {{ include "transcributed.fullname" . }}-frame-worker
+  labels:
+    {{- include "transcributed.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frame-worker
+spec:
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: {{ .Values.frameWorker.keda.backoffLimit }}
+    activeDeadlineSeconds: {{ .Values.frameWorker.keda.activeDeadlineSeconds }}
+    ttlSecondsAfterFinished: {{ .Values.frameWorker.keda.ttlSecondsAfterFinished }}
+    template:
+      metadata:
+        labels:
+          {{- include "transcributed.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: frame-worker
+      spec:
+        restartPolicy: {{ .Values.frameWorker.keda.restartPolicy }}
+        terminationGracePeriodSeconds: {{ .Values.frameWorker.keda.terminationGracePeriodSeconds }}
+        serviceAccountName: {{ include "transcributed.serviceAccountName" . }}
+        {{- with .Values.imagePullSecrets }}
+        imagePullSecrets:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.frameWorker.podSecurityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        containers:
+          - name: frame-worker
+            image: "{{ include "transcributed.frameWorkerImage" . }}"
+            imagePullPolicy: {{ .Values.frameWorker.image.pullPolicy }}
+            {{- include "transcributed.envFrom" . | nindent 12 }}
+            env:
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+            {{- if .Values.nas.enabled }}
+            volumeMounts:
+              - name: nas
+                mountPath: {{ .Values.nas.mountPath }}
+                readOnly: true
+            {{- end }}
+            {{- with .Values.frameWorker.resources }}
+            resources:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            {{- with .Values.frameWorker.securityContext }}
+            securityContext:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+        {{- if .Values.nas.enabled }}
+        volumes:
+          - name: nas
+            persistentVolumeClaim:
+              claimName: {{ include "transcributed.nasClaimName" . }}
+              readOnly: true
+        {{- end }}
+        {{- with .Values.frameWorker.nodeSelector }}
+        nodeSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.frameWorker.tolerations }}
+        tolerations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.frameWorker.affinity }}
+        affinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+  pollingInterval: {{ .Values.frameWorker.keda.pollingInterval }}
+  successfulJobsHistoryLimit: {{ .Values.frameWorker.keda.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.frameWorker.keda.failedJobsHistoryLimit }}
+  maxReplicaCount: {{ .Values.frameWorker.keda.maxReplicaCount }}
+  scalingStrategy:
+    strategy: default
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: {{ .Values.config.rabbitmqFramesQueue | quote }}
+        mode: QueueLength
+        value: {{ .Values.frameWorker.keda.queueLength | quote }}
+      authenticationRef:
+        name: {{ include "transcributed.fullname" . }}-rabbitmq
+{{- end }}

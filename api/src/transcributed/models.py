@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -26,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from transcributed.enums import ProjectStatus, RunStatus, TaskStatus
+from transcributed.enums import ProjectStatus, RunStatus, TaskStatus, Workflow
 
 
 def enum_type(enum_cls: type[Enum]) -> SAEnum:
@@ -42,6 +43,7 @@ def enum_type(enum_cls: type[Enum]) -> SAEnum:
 project_status_type = enum_type(ProjectStatus)
 run_status_type = enum_type(RunStatus)
 task_status_type = enum_type(TaskStatus)
+workflow_type = enum_type(Workflow)
 
 
 class Base(DeclarativeBase):
@@ -84,6 +86,28 @@ class Video(Base, TimestampMixin):
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
+class TimecodeFile(Base, TimestampMixin):
+    __tablename__ = "timecode_files"
+    __table_args__ = (
+        UniqueConstraint(
+            "path",
+            "size_bytes",
+            "mtime",
+            name="uq_timecode_files_path_size_mtime",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    mtime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    timecodes_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"
 
@@ -94,6 +118,12 @@ class Project(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    workflow: Mapped[Workflow] = mapped_column(
+        workflow_type,
+        nullable=False,
+        default=Workflow.TRANSCRIBE,
+        server_default=text("'transcribe'"),
+    )
     status: Mapped[ProjectStatus] = mapped_column(
         project_status_type,
         nullable=False,
@@ -141,6 +171,12 @@ class ProjectItem(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+    timecode_file_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("timecode_files.id"),
+        nullable=True,
+        index=True,
+    )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     spec_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     included: Mapped[bool] = mapped_column(
@@ -152,6 +188,7 @@ class ProjectItem(Base, TimestampMixin):
 
     project: Mapped[Project] = relationship(back_populates="items")
     video: Mapped[Video] = relationship(lazy="joined")
+    timecode_file: Mapped[TimecodeFile | None] = relationship(lazy="joined")
 
 
 class Run(Base, TimestampMixin):
@@ -244,6 +281,18 @@ class Task(Base, TimestampMixin):
         default=0,
         server_default=text("0"),
     )
+    frames_extracted: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    frames_skipped: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     run: Mapped[Run] = relationship(back_populates="tasks")
@@ -254,6 +303,11 @@ class Task(Base, TimestampMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
         lazy="selectin",
+    )
+    frames: Mapped[list[TaskFrame]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -279,3 +333,35 @@ class Artifact(Base, TimestampMixin):
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     task: Mapped[Task] = relationship(back_populates="artifacts")
+
+
+class TaskFrame(Base, TimestampMixin):
+    __tablename__ = "task_frames"
+    __table_args__ = (
+        UniqueConstraint("task_id", "filename", name="uq_task_frames_task_filename"),
+        Index("ix_task_frames_task_id_index", "task_id", "index"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
+    timecode_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    timecode: Mapped[str] = mapped_column(String(20), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+    task: Mapped[Task] = relationship(back_populates="frames")
