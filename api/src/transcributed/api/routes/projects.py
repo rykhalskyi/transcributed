@@ -1,10 +1,12 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from transcributed.api.deps import get_publisher
 from transcributed.db import get_session
+from transcributed.errors import ValidationError
 from transcributed.messaging.publisher import TaskPublisher
 from transcributed.schemas import (
     ProjectCreate,
@@ -16,7 +18,6 @@ from transcributed.schemas import (
     ProjectUpdate,
     RunRead,
     StartProjectResponse,
-    TimecodeAttachRequest,
 )
 from transcributed.services import projects as project_service
 from transcributed.services import runs as run_service
@@ -136,15 +137,23 @@ async def update_project_item(
 async def attach_timecode_file(
     project_id: UUID,
     item_id: UUID,
-    payload: TimecodeAttachRequest,
+    file: Annotated[UploadFile, File()],
     session: AsyncSession = Depends(get_session),
 ) -> ProjectItemRead:
+    raw = await file.read()
+    if len(raw) > 64 * 1024:
+        raise ValidationError("Timecode file is too large")
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValidationError("Timecode file must be UTF-8 text") from exc
     project = await project_service.get_project_for_update(session, project_id)
     return await project_service.attach_timecode_file(
         session,
         project,
         item_id,
-        payload.path,
+        file.filename or "timecodes.txt",
+        content,
     )
 
 

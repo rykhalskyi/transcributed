@@ -148,35 +148,19 @@ async def start_project(
                         }
                     )
                     continue
-                timecode_resolved = resolve_input_path(
-                    item.timecode_file.path,
-                    settings.nas_input_root,
-                    settings.timecode_extensions,
-                )
-                if not source_matches(
-                    item.timecode_file.size_bytes,
-                    item.timecode_file.mtime,
-                    timecode_resolved.size_bytes,
-                    timecode_resolved.mtime,
-                ):
-                    problems.append(
-                        {
-                            "path": item.video.path,
-                            "error": "Timecode file changed since it was attached",
-                        }
-                    )
-                    continue
                 try:
-                    content = timecode_resolved.absolute_path.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError) as exc:
+                    timecodes = parse_timecodes(
+                        item.timecode_file.content,
+                        settings.max_frames_per_video,
+                    )
+                except ValidationError as exc:
                     problems.append(
                         {
                             "path": item.video.path,
-                            "error": f"Timecode file cannot be read: {exc}",
+                            "error": f"Timecode file is invalid: {exc}",
                         }
                     )
                     continue
-                timecodes = parse_timecodes(content, settings.max_frames_per_video)
                 effective_specs[item.id] = build_frame_spec(timecodes)
             else:
                 effective_specs[item.id] = build_effective_spec(

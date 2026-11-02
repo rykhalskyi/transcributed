@@ -72,10 +72,12 @@ uv run mypy src tests
   the newly created run and tasks.
 - `RABBITMQ_ENABLED=false` is an explicit development mode: starts succeed without
   publishing and report `not_enqueued` in the response.
-- Frame projects attach one `.txt` timecode file per video. Each line is
-  `HH:MM:SS`; invalid lines reject the attach or start. Timecodes beyond the
-  video duration are skipped, and only successfully extracted PNG frames are
-  saved. A per-video ZIP is generated on demand from stored frames.
+- Frame projects upload one `.txt` timecode file per video from the browser.
+  Each line is `HH:MM:SS`; invalid lines reject the upload. The uploaded content
+  is stored with the project item and snapshotted into each run, so it does not
+  depend on a NAS text file. Timecodes beyond the video duration are skipped,
+  and only successfully extracted PNG frames are saved. A per-video ZIP is
+  generated on demand from stored frames.
 - Failed tasks are not retried automatically; terminal failures are routed to
   the `transcription.dead` queue. A task left `processing` by a worker that exited
   is marked `failed` when its message is redelivered.

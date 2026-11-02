@@ -76,13 +76,9 @@ const nasError = ref<string | null>(null);
 const nasListing = ref<NasListing | null>(null);
 const nasSelected = ref<string[]>([]);
 
-const timecodeOpen = ref(false);
-const timecodeItem = ref<ProjectItem | null>(null);
-const timecodeLoading = ref(false);
-const timecodeError = ref<string | null>(null);
-const timecodeListing = ref<NasListing | null>(null);
-const timecodeSelected = ref<string | null>(null);
-const timecodeSaving = ref(false);
+const timecodeInput = ref<HTMLInputElement | null>(null);
+const timecodeTarget = ref<ProjectItem | null>(null);
+const timecodeUploading = ref(false);
 
 const isFrames = computed(() => project.value?.workflow === "frames");
 const locked = computed(() => project.value?.status === "active");
@@ -105,7 +101,7 @@ const missingTimecodes = computed(() =>
   items.value.filter(
     (item) =>
       item.included &&
-      (!item.timecode_path || item.timecode_status !== "ok"),
+      !item.timecode_filename,
   ).length,
 );
 const canStart = computed(
@@ -131,7 +127,6 @@ function pathSegments(path: string | undefined) {
 }
 
 const nasSegments = computed(() => pathSegments(nasListing.value?.path));
-const timecodeSegments = computed(() => pathSegments(timecodeListing.value?.path));
 const allNasFilesSelected = computed(() => {
   const files = nasListing.value?.files ?? [];
   return (
@@ -352,51 +347,32 @@ async function addSelectedNas() {
   }
 }
 
-function openTimecodeBrowser(item: ProjectItem) {
-  if (locked.value) return;
-  timecodeItem.value = item;
-  timecodeSelected.value = null;
-  timecodeError.value = null;
-  timecodeOpen.value = true;
-  void browseTimecode("");
-}
-
-async function browseTimecode(path: string) {
-  timecodeLoading.value = true;
-  timecodeError.value = null;
-  try {
-    timecodeListing.value = await listNasFiles(path, 500, "timecode");
-  } catch (err) {
-    timecodeError.value = messageOf(err);
-  } finally {
-    timecodeLoading.value = false;
+function openTimecodePicker(item: ProjectItem) {
+  if (locked.value || timecodeUploading.value) return;
+  timecodeTarget.value = item;
+  if (timecodeInput.value) {
+    timecodeInput.value.value = "";
+    timecodeInput.value.click();
   }
 }
 
-function closeTimecodeBrowser() {
-  if (timecodeSaving.value) return;
-  timecodeOpen.value = false;
-  timecodeItem.value = null;
-  timecodeSelected.value = null;
-}
-
-async function attachSelectedTimecode() {
-  const item = timecodeItem.value;
-  const path = timecodeSelected.value;
-  if (!item || !path || timecodeSaving.value) return;
-  timecodeSaving.value = true;
-  timecodeError.value = null;
+async function uploadTimecodeFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  const item = timecodeTarget.value;
+  if (!file || !item) return;
+  timecodeUploading.value = true;
+  actionError.value = null;
   try {
-    await attachTimecodeFile(props.id, item.id, path);
-    timecodeOpen.value = false;
-    timecodeItem.value = null;
-    timecodeSelected.value = null;
+    await attachTimecodeFile(props.id, item.id, file);
     await load();
-    flash("Timecode file attached.");
+    flash("Timecode file uploaded.");
   } catch (err) {
-    timecodeError.value = messageOf(err);
+    actionError.value = messageOf(err);
   } finally {
-    timecodeSaving.value = false;
+    timecodeUploading.value = false;
+    timecodeTarget.value = null;
+    input.value = "";
   }
 }
 
@@ -500,7 +476,7 @@ onMounted(load);
                     ? 'Add and include at least one video'
                     : 'Add and include at least one lecture'
                   : isFrames && missingTimecodes > 0
-                    ? 'Attach a timecode file to every included video'
+                    ? 'Upload a timecode file for every included video'
                     : isFrames
                       ? 'Start a frame extraction run'
                       : 'Start a transcription run'
@@ -550,7 +526,7 @@ onMounted(load);
             <p class="text-sm text-text-muted">
               {{
                 isFrames
-                  ? "Choose videos from the NAS and attach a timecode file to each one."
+                  ? "Choose videos from the NAS and upload a timecode file for each one."
                   : "Choose lectures from the NAS; media never passes through the API."
               }}
             </p>
@@ -618,16 +594,10 @@ onMounted(load);
                   </div>
                 </td>
                 <td v-if="isFrames">
-                  <div v-if="item.timecode_path" class="space-y-1">
+                  <div v-if="item.timecode_filename" class="space-y-1">
                     <div class="flex items-center gap-1.5">
                       <span class="max-w-[10rem] truncate text-xs font-semibold">
-                        {{ baseName(item.timecode_path) }}
-                      </span>
-                      <span
-                        v-if="item.timecode_status !== 'ok'"
-                        class="rounded-full bg-warning-soft px-1.5 py-0.5 text-[10px] font-semibold text-warning"
-                      >
-                        {{ item.timecode_status }}
+                        {{ baseName(item.timecode_filename) }}
                       </span>
                     </div>
                     <div class="text-[11px] text-text-muted">
@@ -637,8 +607,8 @@ onMounted(load);
                       <button
                         type="button"
                         class="text-brand-purple hover:underline"
-                        :disabled="locked || busy"
-                        @click="openTimecodeBrowser(item)"
+                        :disabled="locked || busy || timecodeUploading"
+                        @click="openTimecodePicker(item)"
                       >
                         Replace
                       </button>
@@ -656,8 +626,8 @@ onMounted(load);
                     v-else
                     type="button"
                     class="rounded-md border border-border bg-white px-2 py-1 text-xs font-semibold text-brand-navy transition hover:border-brand-purple/40 hover:bg-brand-purple-soft"
-                    :disabled="locked || busy"
-                    @click="openTimecodeBrowser(item)"
+                    :disabled="locked || busy || timecodeUploading"
+                    @click="openTimecodePicker(item)"
                   >
                     Attach timecode
                   </button>
@@ -810,6 +780,14 @@ onMounted(load);
       </p>
       <RouterLink to="/projects" class="btn-secondary mt-5">Back to projects</RouterLink>
     </div>
+
+    <input
+      ref="timecodeInput"
+      type="file"
+      accept=".txt,text/plain"
+      class="hidden"
+      @change="uploadTimecodeFile"
+    />
 
     <Teleport to="body">
       <div
@@ -1059,170 +1037,5 @@ onMounted(load);
       </div>
     </Teleport>
 
-    <Teleport to="body">
-      <div
-        v-if="timecodeOpen"
-        class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-navy/40 p-4"
-        @click.self="closeTimecodeBrowser"
-      >
-        <div
-          class="card my-8 w-full max-w-2xl p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="timecode-browser-title"
-        >
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h2 id="timecode-browser-title" class="text-lg font-bold">
-                Attach timecode file
-              </h2>
-              <p class="mt-1 truncate text-sm text-text-muted">
-                {{ timecodeItem ? baseName(timecodeItem.path) : "" }}
-              </p>
-            </div>
-            <button
-              type="button"
-              class="btn-ghost -mr-2 -mt-2 px-2 py-1 text-xl leading-none"
-              aria-label="Close"
-              @click="closeTimecodeBrowser"
-            >
-              ×
-            </button>
-          </div>
-
-          <div class="mt-4 flex flex-wrap items-center gap-1 text-sm">
-            <button
-              type="button"
-              class="font-semibold text-brand-purple hover:underline"
-              @click="browseTimecode('')"
-            >
-              NAS
-            </button>
-            <template v-for="segment in timecodeSegments" :key="segment.path">
-              <span class="text-text-muted">/</span>
-              <button
-                type="button"
-                class="hover:text-brand-purple"
-                @click="browseTimecode(segment.path)"
-              >
-                {{ segment.name }}
-              </button>
-            </template>
-          </div>
-
-          <p
-            v-if="timecodeError"
-            class="mt-4 rounded-lg border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger"
-            role="alert"
-          >
-            {{ timecodeError }}
-          </p>
-
-          <div
-            v-if="timecodeLoading"
-            class="flex items-center gap-3 py-10 text-sm text-text-muted"
-          >
-            <span class="spinner" />
-            Loading folder…
-          </div>
-
-          <div v-else class="mt-4 grid gap-4 md:grid-cols-[220px_1fr]">
-            <div class="rounded-lg border border-border">
-              <div
-                class="border-b border-border bg-surface-muted px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
-              >
-                Folders
-              </div>
-              <div class="max-h-80 overflow-y-auto p-1">
-                <button
-                  v-if="timecodeListing && timecodeListing.parent !== null"
-                  type="button"
-                  class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-brand-purple hover:bg-brand-purple-soft"
-                  @click="browseTimecode(timecodeListing.parent ?? '')"
-                >
-                  ..
-                </button>
-                <button
-                  v-for="directory in timecodeListing?.directories ?? []"
-                  :key="directory.path"
-                  type="button"
-                  class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-brand-purple-soft"
-                  @click="browseTimecode(directory.path)"
-                >
-                  {{ directory.name }}
-                </button>
-                <p
-                  v-if="!timecodeListing?.directories.length"
-                  class="px-3 py-4 text-xs text-text-muted"
-                >
-                  No folders
-                </p>
-              </div>
-            </div>
-
-            <div class="rounded-lg border border-border">
-              <div
-                class="border-b border-border bg-surface-muted px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
-              >
-                Timecode files
-              </div>
-              <div class="max-h-80 overflow-y-auto p-1">
-                <label
-                  v-for="file in timecodeListing?.files ?? []"
-                  :key="file.path"
-                  class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-brand-purple-soft"
-                >
-                  <input
-                    v-model="timecodeSelected"
-                    type="radio"
-                    :value="file.path"
-                    class="h-4 w-4 accent-brand-purple"
-                  />
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate text-sm font-semibold">
-                      {{ file.name }}
-                    </span>
-                    <span class="block text-xs text-text-muted">
-                      {{ formatBytes(file.size_bytes) }}
-                    </span>
-                  </span>
-                </label>
-                <p
-                  v-if="!timecodeListing?.files.length"
-                  class="px-3 py-4 text-xs text-text-muted"
-                >
-                  No .txt timecode files in this folder.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <p class="max-w-md truncate text-xs text-text-muted">
-              {{ timecodeSelected || "No file selected" }}
-            </p>
-            <div class="flex gap-2">
-              <button
-                type="button"
-                class="btn-secondary"
-                :disabled="timecodeSaving"
-                @click="closeTimecodeBrowser"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                class="btn-primary"
-                :disabled="!timecodeSelected || timecodeSaving"
-                @click="attachSelectedTimecode"
-              >
-                <span v-if="timecodeSaving" class="spinner-light" />
-                Attach file
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>

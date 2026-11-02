@@ -277,7 +277,7 @@ onMounted(load);
               </template>
               <template v-else>
                 Frames are saved as original-resolution PNG files. Attach a
-                timecode file to each video on the project page.
+                timecode file for each video on the project page.
               </template>
             </div>
 

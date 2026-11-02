@@ -22,12 +22,7 @@ from transcributed.schemas import (
     ProjectUpdate,
 )
 from transcributed.services.runs import has_active_run
-from transcributed.services.spec import (
-    ResolvedInput,
-    build_effective_spec,
-    resolve_input_path,
-    source_matches,
-)
+from transcributed.services.spec import build_effective_spec, resolve_input_path
 from transcributed.services.timecodes import parse_timecodes
 from transcributed.services.videos import get_or_create_video
 
@@ -226,27 +221,6 @@ async def _load_artifacts(
     return grouped
 
 
-def _timecode_status(item: ProjectItem) -> str | None:
-    if item.timecode_file is None:
-        return None
-    try:
-        resolved = resolve_input_path(
-            item.timecode_file.path,
-            settings.nas_input_root,
-            settings.timecode_extensions,
-        )
-    except (OSError, ValidationError):
-        return "missing"
-    if not source_matches(
-        item.timecode_file.size_bytes,
-        item.timecode_file.mtime,
-        resolved.size_bytes,
-        resolved.mtime,
-    ):
-        return "changed"
-    return "ok"
-
-
 def _to_item_read(
     item: ProjectItem,
     latest_task: Task | None,
@@ -260,13 +234,14 @@ def _to_item_read(
         position=item.position,
         included=item.included,
         spec_overrides=item.spec_overrides,
-        timecode_path=(item.timecode_file.path if item.timecode_file is not None else None),
+        timecode_filename=(
+            item.timecode_file.filename if item.timecode_file is not None else None
+        ),
         timecode_count=(
             item.timecode_file.timecodes_count
             if item.timecode_file is not None
             else None
         ),
-        timecode_status=_timecode_status(item),
         latest_task_status=(latest_task.status if latest_task is not None else None),
         latest_task_id=(latest_task.id if latest_task is not None else None),
         latest_task_progress=(latest_task.progress if latest_task is not None else None),
@@ -405,32 +380,6 @@ async def remove_item(
     await session.commit()
 
 
-async def _get_or_create_timecode_file(
-    session: AsyncSession,
-    resolved: ResolvedInput,
-    timecodes_count: int,
-) -> TimecodeFile:
-    timecode_file = await session.scalar(
-        select(TimecodeFile).where(
-            TimecodeFile.path == resolved.relative_path,
-            TimecodeFile.size_bytes == resolved.size_bytes,
-            TimecodeFile.mtime == resolved.mtime,
-        )
-    )
-    if timecode_file is None:
-        timecode_file = TimecodeFile(
-            path=resolved.relative_path,
-            size_bytes=resolved.size_bytes,
-            mtime=resolved.mtime,
-            timecodes_count=timecodes_count,
-        )
-        session.add(timecode_file)
-        await session.flush()
-    else:
-        timecode_file.timecodes_count = timecodes_count
-    return timecode_file
-
-
 async def _item_read(session: AsyncSession, item: ProjectItem) -> ProjectItemRead:
     await session.refresh(item, attribute_names=["video", "timecode_file"])
     latest_task = await session.scalar(
@@ -474,28 +423,24 @@ async def attach_timecode_file(
     session: AsyncSession,
     project: Project,
     item_id: UUID,
-    path: str,
+    filename: str,
+    content: str,
 ) -> ProjectItemRead:
     if project.workflow != Workflow.FRAMES:
         raise ConflictError("Timecode files are only used by frame projects")
     item = await _load_item_for_update(session, project, item_id)
-    resolved = resolve_input_path(
-        path,
-        settings.nas_input_root,
-        settings.timecode_extensions,
-    )
-    try:
-        content = resolved.absolute_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise ValidationError(f"Timecode file cannot be read: {exc}") from exc
     timecodes = parse_timecodes(content, settings.max_frames_per_video)
-    timecode_file = await _get_or_create_timecode_file(
-        session,
-        resolved,
-        len(timecodes),
-    )
-    item.timecode_file_id = timecode_file.id
-    item.timecode_file = timecode_file
+    safe_filename = filename.strip()[:255] or "timecodes.txt"
+    if item.timecode_file is None:
+        item.timecode_file = TimecodeFile(
+            filename=safe_filename,
+            content=content,
+            timecodes_count=len(timecodes),
+        )
+    else:
+        item.timecode_file.filename = safe_filename
+        item.timecode_file.content = content
+        item.timecode_file.timecodes_count = len(timecodes)
     await session.commit()
     return await _item_read(session, item)
 
@@ -508,7 +453,11 @@ async def remove_timecode_file(
     if project.workflow != Workflow.FRAMES:
         raise ConflictError("Timecode files are only used by frame projects")
     item = await _load_item_for_update(session, project, item_id)
+    timecode_file = item.timecode_file
     item.timecode_file_id = None
     item.timecode_file = None
+    await session.flush()
+    if timecode_file is not None:
+        await session.delete(timecode_file)
     await session.commit()
     return await _item_read(session, item)

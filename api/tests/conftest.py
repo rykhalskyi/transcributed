@@ -95,15 +95,12 @@ def sample_videos() -> list[str]:
 
 @pytest.fixture
 def sample_timecode() -> str:
-    path = TEST_ROOT / "samples" / "lecture-01.txt"
-    path.write_text("00:00:10\n00:00:20\n00:00:30\n")
-    return "lecture-01.txt"
+    return "00:00:10\n00:00:20\n00:00:30\n"
 
 
 @pytest.fixture
 def sample_timecodes() -> list[str]:
-    first = TEST_ROOT / "samples" / "lecture-01.txt"
-    second = TEST_ROOT / "samples" / "lecture-02.txt"
-    first.write_text("00:00:10\n00:00:20\n")
-    second.write_text("00:00:15\n00:00:25\n00:00:35\n")
-    return ["lecture-01.txt", "lecture-02.txt"]
+    return [
+        "00:00:10\n00:00:20\n",
+        "00:00:15\n00:00:25\n00:00:35\n",
+    ]

@@ -88,23 +88,14 @@ class Video(Base, TimestampMixin):
 
 class TimecodeFile(Base, TimestampMixin):
     __tablename__ = "timecode_files"
-    __table_args__ = (
-        UniqueConstraint(
-            "path",
-            "size_bytes",
-            "mtime",
-            name="uq_timecode_files_path_size_mtime",
-        ),
-    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         primary_key=True,
         default=uuid4,
     )
-    path: Mapped[str] = mapped_column(String(1024), nullable=False)
-    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    mtime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
     timecodes_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
